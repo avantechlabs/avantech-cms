@@ -20,6 +20,7 @@ export default defineSchema({
     pageId: v.id("pages"),
     draftFields: v.record(v.string(), v.string()),
     publishedFields: v.record(v.string(), v.string()),
+    lastSeenAt: v.optional(v.record(v.string(), v.number())),
     draftUpdatedAt: v.optional(v.number()),
     publishedAt: v.optional(v.number()),
     updatedAt: v.number(),

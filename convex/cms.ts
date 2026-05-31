@@ -87,6 +87,7 @@ async function upsertPageContent(
   patch: {
     draftFields?: Record<string, string>;
     publishedFields?: Record<string, string>;
+    lastSeenAt?: Record<string, number>;
     draftUpdatedAt?: number;
     publishedAt?: number;
   },
@@ -228,13 +229,17 @@ export const seedDiscoveredFields = mutation({
     const content = result.content;
     const draftFields = { ...(content?.draftFields ?? {}) };
     const publishedFields = { ...(content?.publishedFields ?? {}) };
+    const lastSeenAt = { ...(content?.lastSeenAt ?? {}) };
 
+    const now = Date.now();
     for (const field of args.fields) {
       if (!(field.id in publishedFields)) publishedFields[field.id] = field.value;
+      lastSeenAt[field.id] = now;
     }
 
     await upsertPageContent(ctx, result.project._id, result.page._id, content, {
       publishedFields,
+      lastSeenAt,
     });
 
     return {
@@ -290,5 +295,24 @@ export const publishPage = mutation({
     });
 
     return publishedFields;
+  },
+});
+
+export const discardDrafts = mutation({
+  args: {
+    projectSlug: v.string(),
+    pageSlug: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const result = await requireContent(ctx, args.projectSlug, args.pageSlug);
+    if (!result?.content) return null;
+
+    await ctx.db.patch(result.content._id, {
+      draftFields: {},
+      draftUpdatedAt: undefined,
+      updatedAt: Date.now(),
+    });
+
+    return { ...result.content, draftFields: {}, draftUpdatedAt: undefined };
   },
 });

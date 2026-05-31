@@ -7,20 +7,30 @@ interface UseIframeMessagingOptions {
   onReady: () => void;
   onFields: (fields: FieldData[]) => void;
   onFieldClicked: (fieldId: string) => void;
+  onFieldChanged: (fieldId: string, value: string) => void;
+  onEditing: (fieldId: string | null) => void;
 }
 
-export function useIframeMessaging({
-  previewOrigin,
-  projectSlug,
-  onReady,
-  onFields,
-  onFieldClicked,
-}: UseIframeMessagingOptions) {
+export function useIframeMessaging(options: UseIframeMessagingOptions) {
+  const { previewOrigin, projectSlug } = options;
   const iframeRef = useRef<HTMLIFrameElement>(null);
+
+  // Always call the latest callbacks without re-subscribing the listener.
+  const handlers = useRef(options);
+  handlers.current = options;
+
+  // Queue messages until the bridge announces it's ready, so we never post to a
+  // not-yet-loaded iframe (avoids origin-mismatch warnings + dropped content).
+  const readyRef = useRef(false);
+  const queueRef = useRef<CmsToSiteMessage[]>([]);
 
   const send = useCallback(
     (message: CmsToSiteMessage) => {
       if (!previewOrigin) return;
+      if (!readyRef.current) {
+        queueRef.current.push(message);
+        return;
+      }
       iframeRef.current?.contentWindow?.postMessage(message, previewOrigin);
     },
     [previewOrigin],
@@ -29,13 +39,27 @@ export function useIframeMessaging({
   useEffect(() => {
     if (!previewOrigin) return;
 
+    // A fresh iframe (new project / reload) starts not-ready.
+    readyRef.current = false;
+    queueRef.current = [];
+
     function onMessage(event: MessageEvent) {
       if (event.origin !== previewOrigin) return;
       const message = event.data as SiteToCmsMessage;
+      const h = handlers.current;
 
-      if (message.type === "cms:ready") onReady();
-      if (message.type === "cms:fields") onFields(message.fields);
-      if (message.type === "cms:field-clicked") onFieldClicked(message.fieldId);
+      if (message.type === "cms:ready") {
+        readyRef.current = true;
+        const pending = queueRef.current;
+        queueRef.current = [];
+        for (const queued of pending) {
+          iframeRef.current?.contentWindow?.postMessage(queued, previewOrigin);
+        }
+        h.onReady();
+      } else if (message.type === "cms:fields") h.onFields(message.fields);
+      else if (message.type === "cms:field-clicked") h.onFieldClicked(message.fieldId);
+      else if (message.type === "cms:field-changed") h.onFieldChanged(message.fieldId, message.value);
+      else if (message.type === "cms:editing") h.onEditing(message.fieldId);
     }
 
     window.addEventListener("message", onMessage);
