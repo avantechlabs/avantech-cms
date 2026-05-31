@@ -47,17 +47,19 @@
     }
     body.cms-edit [data-cms-field].cms-leaf {
       cursor: text;
-      border-radius: 3px;
-      outline: 1.5px dashed transparent;
+      border-radius: 4px;
+      outline: 1.5px solid transparent;
       outline-offset: 6px;
-      transition: outline-color .14s ease, background-color .2s ease;
+      transition: outline-color .14s ease, background-color .14s ease;
     }
     body.cms-edit [data-cms-field].cms-leaf.cms-draft {
+      /* calm "you changed this": soft tint + soft solid accent, never an alarming dashed box */
       background-color: var(--cms-draft-tint);
-      outline-color: color-mix(in srgb, var(--cms-draft) 55%, transparent);
+      outline-color: color-mix(in srgb, var(--cms-draft) 45%, transparent);
     }
     body.cms-edit [data-cms-field].cms-leaf.cms-hover {
       outline-color: var(--cms-gold);
+      background-color: color-mix(in srgb, var(--cms-gold) 7%, transparent);
     }
     body.cms-edit [data-cms-field].cms-leaf.cms-active {
       outline: 2px solid var(--cms-gold) !important;
