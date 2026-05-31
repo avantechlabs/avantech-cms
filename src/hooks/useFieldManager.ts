@@ -9,6 +9,9 @@ type SaveState = "idle" | "saving" | "saved" | "publishing" | "published";
 export function useFieldManager(projectSlug: string) {
   const [saveState, setSaveState] = useState<SaveState>("idle");
   const seededSignatureRef = useRef("");
+  // The latest in-flight draft save; publish/discard wait on it so a fast
+  // commit-then-publish can never act on stale draft state.
+  const pendingSaveRef = useRef<Promise<unknown>>(Promise.resolve());
 
   const seedDiscoveredFields = useMutation(api.cms.seedDiscoveredFields);
   const saveDraft = useMutation(api.cms.saveDraft);
@@ -17,18 +20,23 @@ export function useFieldManager(projectSlug: string) {
 
   function saveDraftField(fieldId: string, value: string) {
     setSaveState("saving");
-    return saveDraft({ projectSlug, pageSlug: PAGE_SLUG, fields: { [fieldId]: value } })
+    const saved = saveDraft({ projectSlug, pageSlug: PAGE_SLUG, fields: { [fieldId]: value } })
       .then(() => setSaveState("saved"));
+    pendingSaveRef.current = saved.catch(() => {});
+    return saved;
   }
 
   function publish() {
     setSaveState("publishing");
-    return publishPage({ projectSlug, pageSlug: PAGE_SLUG })
+    return pendingSaveRef.current
+      .then(() => publishPage({ projectSlug, pageSlug: PAGE_SLUG }))
       .then(() => setSaveState("published"));
   }
 
   function discard() {
-    return discardDrafts({ projectSlug, pageSlug: PAGE_SLUG });
+    return pendingSaveRef.current.then(() =>
+      discardDrafts({ projectSlug, pageSlug: PAGE_SLUG }),
+    );
   }
 
   function resetForProject() {

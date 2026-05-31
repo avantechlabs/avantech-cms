@@ -232,15 +232,26 @@ export const seedDiscoveredFields = mutation({
     const lastSeenAt = { ...(content?.lastSeenAt ?? {}) };
 
     const now = Date.now();
+    let changed = !content; // create the row if it doesn't exist yet
     for (const field of args.fields) {
-      if (!(field.id in publishedFields)) publishedFields[field.id] = field.value;
-      lastSeenAt[field.id] = now;
+      if (!(field.id in publishedFields)) {
+        publishedFields[field.id] = field.value;
+        changed = true;
+      }
+      if (!(field.id in lastSeenAt)) {
+        lastSeenAt[field.id] = now;
+        changed = true;
+      }
     }
 
-    await upsertPageContent(ctx, result.project._id, result.page._id, content, {
-      publishedFields,
-      lastSeenAt,
-    });
+    // Idempotent: re-discovering the same fields writes nothing, so reopening
+    // the editor doesn't churn updatedAt / re-fire content subscriptions.
+    if (changed) {
+      await upsertPageContent(ctx, result.project._id, result.page._id, content, {
+        publishedFields,
+        lastSeenAt,
+      });
+    }
 
     return {
       ...publishedFields,

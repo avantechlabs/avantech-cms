@@ -35,8 +35,11 @@ function getProjectSlug() {
   return first || "project-a";
 }
 
+// Create the Convex client once at module load, not per render.
+const convexClient = convexUrl ? new ConvexReactClient(convexUrl) : null;
+
 function CmsApp() {
-  if (!convexUrl) {
+  if (!convexClient) {
     return (
       <div className="missingConfig">
         <h1>Avantech CMS</h1>
@@ -44,9 +47,8 @@ function CmsApp() {
       </div>
     );
   }
-  const convex = new ConvexReactClient(convexUrl);
   return (
-    <ConvexProvider client={convex}>
+    <ConvexProvider client={convexClient}>
       <Cms />
     </ConvexProvider>
   );
@@ -94,6 +96,12 @@ function Cms() {
       send({ type: "cms:discover-fields" });
       send({ type: "cms:set-mode", mode });
       send({ type: "cms:set-theme", theme, tokens: BRIDGE_TOKENS[theme] });
+      // Resend current content + draft markers so an iframe reload re-hydrates
+      // (onReady fires again on every reload at the same origin).
+      if (previewFields && Object.keys(previewFields).length) {
+        send({ type: "cms:apply-fields", fields: previewFields });
+      }
+      send({ type: "cms:set-drafts", fieldIds: draftFieldIds });
     },
     onFields: (nextFields) => {
       const editable = nextFields.filter((f) => f.editable !== false);

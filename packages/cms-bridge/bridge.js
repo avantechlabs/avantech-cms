@@ -136,7 +136,9 @@
     send({ type: "cms:fields", fields: allFields().map(fieldFromElement) });
   }
   function scheduleFields() {
-    if (scheduled) return;
+    // Never re-report field geometry/values mid-edit — it would surface
+    // partial in-progress text and fight the active contenteditable.
+    if (scheduled || activeEl) return;
     scheduled = true;
     requestAnimationFrame(sendFields);
   }
@@ -189,6 +191,7 @@
       send({ type: "cms:field-changed", fieldId: el.dataset.cmsField, value });
     }
     send({ type: "cms:editing", fieldId: null });
+    scheduleFields(); // re-report any layout/field changes deferred during the edit
   }
 
   // ── Events ──────────────────────────────────────────────────────────────
@@ -209,27 +212,37 @@
     showChip(field);
   });
 
-  document.addEventListener("click", (event) => {
-    const field = event.target.closest(FIELD_SELECTOR);
-    if (editMode && field && isLeaf(field)) {
-      event.preventDefault();
-      enterEdit(field);
-      send({ type: "cms:field-clicked", fieldId: field.dataset.cmsField });
-      return;
-    }
-    if (activeEl && field !== activeEl) commit();
-  });
+  // Capture phase + stopPropagation: an editable field can live inside the
+  // site's own <a>/<button>/form. Intercept before the site's handlers run so
+  // clicking to edit never navigates/submits and loses the edit.
+  document.addEventListener(
+    "click",
+    (event) => {
+      const field = event.target.closest(FIELD_SELECTOR);
+      if (editMode && field && isLeaf(field)) {
+        event.preventDefault();
+        event.stopPropagation();
+        enterEdit(field);
+        send({ type: "cms:field-clicked", fieldId: field.dataset.cmsField });
+        return;
+      }
+      if (activeEl && field !== activeEl) commit();
+    },
+    true,
+  );
 
-  document.addEventListener("keydown", (event) => {
-    if (!activeEl) return;
-    if (event.key === "Escape") {
-      event.preventDefault();
-      commit();
-    } else if (event.key === "Enter" && !event.shiftKey) {
-      event.preventDefault();
-      commit();
-    }
-  });
+  document.addEventListener(
+    "keydown",
+    (event) => {
+      if (!activeEl) return;
+      if (event.key === "Escape" || (event.key === "Enter" && !event.shiftKey)) {
+        event.preventDefault();
+        event.stopPropagation(); // don't let Enter submit the site's form, etc.
+        commit();
+      }
+    },
+    true,
+  );
 
   document.addEventListener("focusout", (event) => {
     if (activeEl && event.target === activeEl) commit();
