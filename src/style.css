@@ -10,7 +10,7 @@
   --gold-tint: #FFF6E0;
   --gold-ring: rgba(253, 183, 20, 0.22);
 
-  --bg: #FBFAF8;
+  --bg: #EFEBE3;
   --surface: #FFFFFF;
   --surface-2: #F4F2EE;
   --surface-3: #ECE9E3;
@@ -101,14 +101,16 @@ a { color: inherit; text-decoration: none; }
 .stage {
   position: relative;
   min-height: 100vh;
-  padding: var(--s-5);
+  /* Dedicated chrome bands top + bottom so floating chrome lives in the
+     margin and never overlaps the customer's content. */
+  padding: 56px var(--s-5) 96px;
   transition: padding var(--dur-panel) var(--ease-soft);
 }
 html[data-mode="view"] .stage { padding: 0; }
 
 .frame {
   width: 100%;
-  height: calc(100vh - 2 * var(--s-5));
+  height: calc(100vh - 56px - 96px);
   border: 1px solid var(--line);
   border-radius: var(--r-lg);
   overflow: hidden;
@@ -448,8 +450,8 @@ html[data-mode="view"] .railTab { opacity: 0; pointer-events: none; }
 }
 
 @media (max-width: 720px) {
-  .stage { padding: var(--s-3); }
-  .frame { height: calc(100vh - 2 * var(--s-3)); }
+  .stage { padding: 50px var(--s-3) 86px; }
+  .frame { height: calc(100vh - 50px - 86px); }
   .bottomBar { left: var(--s-3); right: var(--s-3); transform: none; justify-content: space-between; gap: var(--s-2); padding-left: var(--s-3); }
   html[data-mode="view"] .bottomBar { transform: translateY(20px); }
   .toast { bottom: 84px; }

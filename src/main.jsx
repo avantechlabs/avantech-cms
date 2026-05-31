@@ -271,7 +271,6 @@ function Cms() {
           {changeCount > 0 && <span className="unpublished">· {changeCount} unpublished</span>}
         </div>
         <span className="sep" />
-        <button className="barBtn" onClick={() => showToast("History is coming soon")}>History</button>
         <button className="barBtn" onClick={onDiscard} disabled={changeCount === 0}>Discard</button>
         <button className="barBtn primary" onClick={onPublish} disabled={changeCount === 0}>
           {changeCount > 0 && <span className="badge">{changeCount}</span>}
