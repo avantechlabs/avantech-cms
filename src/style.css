@@ -442,6 +442,17 @@ html[data-mode="view"] .railTab { opacity: 0; pointer-events: none; }
 .hint.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 .hint .key { color: var(--gold); }
 
+/* Visible keyboard focus on every interactive chrome control. */
+.iconBtn:focus-visible,
+.modeToggle button:focus-visible,
+.barBtn:focus-visible,
+.railTab:focus-visible,
+.railClose:focus-visible,
+.rail a:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 2px;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.01ms !important;

@@ -156,6 +156,16 @@ function Cms() {
     send({ type: "cms:set-theme", theme, tokens: BRIDGE_TOKENS[theme] });
   }, [theme, send]);
 
+  // Esc closes the rail (universal "back out one level" for the panel).
+  useEffect(() => {
+    if (!railOpen) return;
+    function onKey(event) {
+      if (event.key === "Escape") setRailOpen(false);
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [railOpen]);
+
   function showToast(message) {
     setToast(message);
     clearTimeout(toastTimer.current);
@@ -219,7 +229,7 @@ function Cms() {
       {railOpen && <div className="scrim" onClick={() => setRailOpen(false)} />}
       <aside className={`rail${railOpen ? " open" : ""}`} aria-hidden={!railOpen}>
         <div className="railHead">
-          <span className="title">Collections</span>
+          <span className="title">Navigate</span>
           <button className="railClose" onClick={() => setRailOpen(false)} aria-label="Close">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12" /></svg>
           </button>
