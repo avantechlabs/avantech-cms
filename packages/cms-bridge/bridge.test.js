@@ -45,16 +45,36 @@ test("bridge discovers image fields from src and text fields from text content",
     expect.arrayContaining([
       expect.objectContaining({
         id: "hero.image",
+        kind: "image",
         value: "/images/static-hero.jpg",
         editable: true,
       }),
       expect.objectContaining({
         id: "hero.title",
+        kind: "text",
         value: "Static title",
         editable: true,
       }),
     ]),
   );
+});
+
+test("bridge reports image field clicks with image kind", () => {
+  document.body.innerHTML = `<img data-cms-field="hero.image" src="/images/static-hero.jpg" alt="">`;
+  installBridge();
+
+  document
+    .querySelector('[data-cms-field="hero.image"]')
+    .dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+
+  expect(postedMessages).toContainEqual({
+    origin: parentOrigin,
+    message: {
+      type: "cms:field-clicked",
+      fieldId: "hero.image",
+      kind: "image",
+    },
+  });
 });
 
 test("bridge applies image field values to src and text field values to textContent", () => {

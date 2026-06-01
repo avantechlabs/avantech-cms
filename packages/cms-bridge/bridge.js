@@ -123,6 +123,9 @@
   function isImageField(el) {
     return el instanceof HTMLImageElement;
   }
+  function fieldKind(el) {
+    return isImageField(el) ? "image" : "text";
+  }
   function fieldValue(el) {
     if (isImageField(el)) return el.getAttribute("src") || el.currentSrc || el.src;
     return el.textContent.trim();
@@ -133,6 +136,7 @@
     const r = el.getBoundingClientRect();
     return {
       id: el.dataset.cmsField,
+      kind: fieldKind(el),
       value: fieldValue(el),
       editable: isLeaf(el),
       rect: { left: r.left, top: r.top, width: r.width, height: r.height },
@@ -245,7 +249,11 @@
         } else {
           enterEdit(field);
         }
-        send({ type: "cms:field-clicked", fieldId: field.dataset.cmsField });
+        send({
+          type: "cms:field-clicked",
+          fieldId: field.dataset.cmsField,
+          kind: fieldKind(field),
+        });
         return;
       }
       if (activeEl && field !== activeEl) commit();

@@ -73,6 +73,7 @@ function Cms() {
     seededSignatureRef,
     seedDiscoveredFields,
     saveDraftField,
+    uploadImageDraft,
     publish,
     discard,
     resetForProject,
@@ -83,6 +84,9 @@ function Cms() {
   const [railOpen, setRailOpen] = useState(false);
   const [toast, setToast] = useState("");
   const [hint, setHint] = useState(false);
+  const [selectedField, setSelectedField] = useState(null);
+  const fieldsByIdRef = useRef(new Map());
+  const imageInputRef = useRef(null);
   const toastTimer = useRef(null);
   const hintTimer = useRef(null);
 
@@ -104,6 +108,11 @@ function Cms() {
       send({ type: "cms:set-drafts", fieldIds: draftFieldIds });
     },
     onFields: (nextFields) => {
+      fieldsByIdRef.current = new Map(nextFields.map((field) => [field.id, field]));
+      setSelectedField((current) =>
+        current ? fieldsByIdRef.current.get(current.id) ?? current : null,
+      );
+
       const editable = nextFields.filter((f) => f.editable !== false);
       const signature = editable.map((f) => f.id).sort().join("|");
       if (signature && signature !== seededSignatureRef.current) {
@@ -121,7 +130,10 @@ function Cms() {
       saveDraftField(fieldId, value);
       showToast("Saved");
     },
-    onFieldClicked: () => {},
+    onFieldClicked: (fieldId, kind) => {
+      const field = fieldsByIdRef.current.get(fieldId) ?? { id: fieldId, kind };
+      setSelectedField({ ...field, kind: field.kind ?? kind ?? "text" });
+    },
     onEditing: () => {},
   });
 
@@ -143,6 +155,7 @@ function Cms() {
 
   useEffect(() => {
     resetForProject();
+    setSelectedField(null);
   }, [projectSlug]);
 
   // Mode → html attribute (drives chrome recede) + iframe affordances + first-run hint.
@@ -199,7 +212,35 @@ function Cms() {
     });
   }
 
+  function onChooseImage() {
+    imageInputRef.current?.click();
+  }
+
+  function onImageFileChange(event) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file || selectedField?.kind !== "image") return;
+
+    const fieldId = selectedField.id;
+    const previewUrl = URL.createObjectURL(file);
+    send({ type: "cms:update-field", fieldId, value: previewUrl });
+    uploadImageDraft(fieldId, file)
+      .then(() => {
+        showToast("Image saved as draft");
+        setTimeout(() => URL.revokeObjectURL(previewUrl), 5000);
+      })
+      .catch((error) => {
+        URL.revokeObjectURL(previewUrl);
+        if (previewFields[fieldId]) {
+          send({ type: "cms:update-field", fieldId, value: previewFields[fieldId] });
+        }
+        console.error(error);
+        showToast("Image upload failed");
+      });
+  }
+
   const projectName = project?.name || projectSlug;
+  const selectedImageField = selectedField?.kind === "image" ? selectedField : null;
 
   return (
     <div className="stage">
@@ -295,6 +336,25 @@ function Cms() {
           Publish
         </button>
       </div>
+
+      {selectedImageField && mode === "edit" && (
+        <div className="imagePanel" role="toolbar" aria-label="Image field actions">
+          <div className="imagePanelMeta">
+            <span className="imagePanelLabel">Image</span>
+            <span className="imagePanelField">{selectedImageField.id}</span>
+          </div>
+          <button className="barBtn primary" onClick={onChooseImage}>
+            Replace
+          </button>
+          <input
+            ref={imageInputRef}
+            className="fileInput"
+            type="file"
+            accept="image/*"
+            onChange={onImageFileChange}
+          />
+        </div>
+      )}
 
       {/* Toast + first-run hint */}
       <div className={`toast${toast ? " show" : ""}`} role="status">

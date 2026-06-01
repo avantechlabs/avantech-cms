@@ -320,6 +320,20 @@ export const seedDiscoveredFields = mutation({
   },
 });
 
+export const generateImageUploadUrl = mutation({
+  args: {
+    projectSlug: v.string(),
+    pageSlug: v.string(),
+    fieldId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const result = await requireContent(ctx, args.projectSlug, args.pageSlug);
+    if (!result) return null;
+
+    return await ctx.storage.generateUploadUrl();
+  },
+});
+
 export const saveDraft = mutation({
   args: {
     projectSlug: v.string(),

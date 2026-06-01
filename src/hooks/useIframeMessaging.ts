@@ -6,7 +6,7 @@ interface UseIframeMessagingOptions {
   projectSlug: string;
   onReady: () => void;
   onFields: (fields: FieldData[]) => void;
-  onFieldClicked: (fieldId: string) => void;
+  onFieldClicked: (fieldId: string, kind: FieldData["kind"]) => void;
   onFieldChanged: (fieldId: string, value: string) => void;
   onEditing: (fieldId: string | null) => void;
 }
@@ -57,7 +57,7 @@ export function useIframeMessaging(options: UseIframeMessagingOptions) {
         }
         h.onReady();
       } else if (message.type === "cms:fields") h.onFields(message.fields);
-      else if (message.type === "cms:field-clicked") h.onFieldClicked(message.fieldId);
+      else if (message.type === "cms:field-clicked") h.onFieldClicked(message.fieldId, message.kind);
       else if (message.type === "cms:field-changed") h.onFieldChanged(message.fieldId, message.value);
       else if (message.type === "cms:editing") h.onEditing(message.fieldId);
     }
