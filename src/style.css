@@ -24,8 +24,10 @@
   --line-strong: #D8D3CA;
 
   --draft: #B7791F;
+  --draft-ink: #8C5E15; /* darker amber that meets 4.5:1 as text on light surface */
   --draft-tint: #FBF3E3;
   --live: #3F8F5B;
+  --danger: #B4452F;
 
   --font-ui: 'Inter', system-ui, sans-serif;
   --font-meta: 'Space Mono', ui-monospace, monospace;
@@ -72,8 +74,10 @@
   --line-strong: rgba(245, 242, 234, 0.18);
 
   --draft: #E0A94A;
+  --draft-ink: #E0A94A; /* dark surface already clears 4.5:1 at this amber */
   --draft-tint: rgba(224, 169, 74, 0.12);
   --live: #5FB47C;
+  --danger: #E0816F;
 
   --shadow-lg: 0 0 0 1px rgba(255,255,255,0.05), 0 12px 32px rgba(0,0,0,0.5);
   --shadow-xl: 0 0 0 1px rgba(255,255,255,0.05), 0 22px 60px rgba(0,0,0,0.6);
@@ -241,7 +245,7 @@ html[data-mode="view"] .bottomBar {
   box-shadow: 0 0 0 4px var(--gold-ring);
   animation: cms-pulse 2.4s var(--ease) infinite;
 }
-.status .unpublished { color: var(--draft); font-weight: 500; }
+.status .unpublished { color: var(--draft-ink); font-weight: 500; }
 
 @keyframes cms-pulse {
   0%, 100% { opacity: 1; }
@@ -288,6 +292,141 @@ html[data-mode="view"] .bottomBar {
   color: #1A1916;
   font-family: var(--font-meta);
   font-size: 11px;
+}
+
+/* ============================================================
+   Image edit card — a compact floating inspector for the
+   selected image. Appears on image click; replaces in-place
+   text editing for image fields. (calm · premium · recede)
+   ============================================================ */
+.imageCard {
+  position: fixed;
+  top: 50%;
+  right: var(--s-5);
+  transform: translateY(-50%);
+  z-index: 70;
+  width: 320px;
+  max-width: calc(100vw - 2 * var(--s-5));
+  padding: var(--s-4);
+  display: grid;
+  gap: var(--s-3);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-xl);
+  animation: cms-card-in var(--dur-base) var(--ease) both;
+}
+
+@keyframes cms-card-in {
+  from { opacity: 0; transform: translateY(-50%) translateX(10px); }
+  to   { opacity: 1; transform: translateY(-50%) translateX(0); }
+}
+
+.imageCardHead {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--s-2);
+}
+.imageCardMeta { display: grid; gap: 2px; min-width: 0; }
+.imageCardEyebrow {
+  font-family: var(--font-meta);
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.imageCardTitle {
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.2;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+/* Preview doubles as the drop target + click-to-replace control. */
+.imageDrop {
+  position: relative;
+  display: grid;
+  place-items: center;
+  aspect-ratio: 16 / 10;
+  width: 100%;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+  overflow: hidden;
+  cursor: pointer;
+  transition: border-color var(--dur-fast) var(--ease);
+}
+.imageDrop:hover { border-color: var(--line-strong); }
+.imageDrop.drag { border: 1.5px dashed var(--gold); background: var(--gold-tint); }
+.imageDrop img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.imageDropEmpty { font-size: 13px; color: var(--text-dim); }
+.imageDropHint {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: var(--s-3);
+  text-align: center;
+  font-size: 12px;
+  font-weight: 500;
+  color: #fff;
+  background: color-mix(in srgb, var(--text) 42%, transparent);
+  opacity: 0;
+  transition: opacity var(--dur-fast) var(--ease);
+}
+.imageDrop:hover .imageDropHint,
+.imageDrop.drag .imageDropHint,
+.imageDrop.uploading .imageDropHint,
+.imageDrop:focus-visible .imageDropHint { opacity: 1; }
+.imageDrop:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+.imageDropHint .spinner {
+  display: inline-block;
+  vertical-align: -2px;
+  width: 13px;
+  height: 13px;
+  margin-right: 7px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  border-top-color: #fff;
+  animation: cms-spin 0.7s linear infinite;
+}
+@keyframes cms-spin { to { transform: rotate(360deg); } }
+
+.imageStatus {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.imageStatus .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--text-dim); flex-shrink: 0; }
+/* Draft is the only status that spends color — published recedes to muted. */
+.imageStatus.draft { color: var(--draft-ink); font-weight: 500; }
+.imageStatus.draft .dot { background: var(--draft); }
+
+.imageError {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  margin: 0;
+  font-size: 12px;
+  color: var(--danger);
+}
+
+.imageCardActions { display: flex; gap: var(--s-2); }
+.imageCardActions .primary { flex: 1; justify-content: center; }
+
+.fileInput {
+  display: none;
 }
 
 /* ============================================================
@@ -465,5 +604,19 @@ html[data-mode="view"] .railTab { opacity: 0; pointer-events: none; }
   .frame { height: calc(100vh - 50px - 86px); }
   .bottomBar { left: var(--s-3); right: var(--s-3); transform: none; justify-content: space-between; gap: var(--s-2); padding-left: var(--s-3); }
   html[data-mode="view"] .bottomBar { transform: translateY(20px); }
+  .imageCard {
+    top: auto;
+    right: var(--s-3);
+    left: var(--s-3);
+    bottom: 96px;
+    width: auto;
+    max-width: none;
+    transform: none;
+    animation: cms-card-in-m var(--dur-base) var(--ease) both;
+  }
+  @keyframes cms-card-in-m {
+    from { opacity: 0; transform: translateY(8px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
   .toast { bottom: 84px; }
 }

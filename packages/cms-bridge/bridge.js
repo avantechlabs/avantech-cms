@@ -6,6 +6,7 @@
   if (!parentOrigin) return;
 
   const FIELD_SELECTOR = "[data-cms-field]";
+  const scheduleFrame = window.requestAnimationFrame || ((callback) => setTimeout(callback, 0));
 
   let scheduled = false;
   let editMode = true; // bridge is injected only in edit; parent confirms via cms:set-mode
@@ -51,6 +52,9 @@
       outline: 1.5px solid transparent;
       outline-offset: 6px;
       transition: outline-color .14s ease, background-color .14s ease;
+    }
+    body.cms-edit img[data-cms-field].cms-leaf {
+      cursor: pointer;
     }
     body.cms-edit [data-cms-field].cms-leaf.cms-draft {
       /* calm "you changed this": soft tint + soft solid accent, never an alarming dashed box */
@@ -116,13 +120,24 @@
   function markLeaves() {
     for (const el of leafFields()) el.classList.add("cms-leaf");
   }
+  function isImageField(el) {
+    return el instanceof HTMLImageElement;
+  }
+  function fieldKind(el) {
+    return isImageField(el) ? "image" : "text";
+  }
+  function fieldValue(el) {
+    if (isImageField(el)) return el.getAttribute("src") || el.currentSrc || el.src;
+    return el.textContent.trim();
+  }
 
   // ── Discovery ───────────────────────────────────────────────────────────
   function fieldFromElement(el) {
     const r = el.getBoundingClientRect();
     return {
       id: el.dataset.cmsField,
-      value: el.textContent.trim(),
+      kind: fieldKind(el),
+      value: fieldValue(el),
       editable: isLeaf(el),
       rect: { left: r.left, top: r.top, width: r.width, height: r.height },
     };
@@ -132,6 +147,7 @@
   }
   function sendFields() {
     scheduled = false;
+    if (typeof document === "undefined") return;
     markLeaves();
     send({ type: "cms:fields", fields: allFields().map(fieldFromElement) });
   }
@@ -140,11 +156,16 @@
     // partial in-progress text and fight the active contenteditable.
     if (scheduled || activeEl) return;
     scheduled = true;
-    requestAnimationFrame(sendFields);
+    scheduleFrame(sendFields);
   }
   function applyField(fieldId, value) {
     const el = getLeaf(fieldId);
-    if (el && el !== activeEl) el.textContent = value;
+    if (!el || el === activeEl) return;
+    if (isImageField(el)) {
+      el.src = value;
+    } else {
+      el.textContent = value;
+    }
   }
 
   // ── Hover label chip ────────────────────────────────────────────────────
@@ -163,6 +184,7 @@
   function enterEdit(el) {
     if (activeEl === el) return;
     commit();
+    if (isImageField(el)) return;
     activeEl = el;
     activeStartValue = el.textContent;
     el.classList.remove("cms-hover");
@@ -222,8 +244,16 @@
       if (editMode && field && isLeaf(field)) {
         event.preventDefault();
         event.stopPropagation();
-        enterEdit(field);
-        send({ type: "cms:field-clicked", fieldId: field.dataset.cmsField });
+        if (isImageField(field)) {
+          commit();
+        } else {
+          enterEdit(field);
+        }
+        send({
+          type: "cms:field-clicked",
+          fieldId: field.dataset.cmsField,
+          kind: fieldKind(field),
+        });
         return;
       }
       if (activeEl && field !== activeEl) commit();

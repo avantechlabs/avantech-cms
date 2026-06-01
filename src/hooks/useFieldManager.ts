@@ -14,6 +14,7 @@ export function useFieldManager(projectSlug: string) {
   const pendingSaveRef = useRef<Promise<unknown>>(Promise.resolve());
 
   const seedDiscoveredFields = useMutation(api.cms.seedDiscoveredFields);
+  const generateImageUploadUrl = useMutation(api.cms.generateImageUploadUrl);
   const saveDraft = useMutation(api.cms.saveDraft);
   const publishPage = useMutation(api.cms.publishPage);
   const discardDrafts = useMutation(api.cms.discardDrafts);
@@ -24,6 +25,42 @@ export function useFieldManager(projectSlug: string) {
       .then(() => setSaveState("saved"));
     pendingSaveRef.current = saved.catch(() => {});
     return saved;
+  }
+
+  async function uploadImageDraft(fieldId: string, file: File) {
+    setSaveState("saving");
+    const uploaded = generateImageUploadUrl({ projectSlug, pageSlug: PAGE_SLUG, fieldId })
+      .then(async (uploadUrl) => {
+        if (!uploadUrl) throw new Error("Unable to create image upload URL.");
+
+        const response = await fetch(uploadUrl, {
+          method: "POST",
+          headers: { "Content-Type": file.type || "application/octet-stream" },
+          body: file,
+        });
+        if (!response.ok) {
+          throw new Error(`Image upload failed with status ${response.status}.`);
+        }
+
+        const { storageId } = await response.json();
+        if (!storageId) throw new Error("Image upload did not return a storage ID.");
+
+        const canonicalValue = `convex-storage:${storageId}`;
+        await saveDraft({
+          projectSlug,
+          pageSlug: PAGE_SLUG,
+          fields: { [fieldId]: canonicalValue },
+        });
+        setSaveState("saved");
+        return canonicalValue;
+      })
+      .catch((error) => {
+        setSaveState("idle");
+        throw error;
+      });
+
+    pendingSaveRef.current = uploaded.catch(() => {});
+    return uploaded;
   }
 
   function publish() {
@@ -48,6 +85,7 @@ export function useFieldManager(projectSlug: string) {
     seededSignatureRef,
     seedDiscoveredFields,
     saveDraftField,
+    uploadImageDraft,
     publish,
     discard,
     resetForProject,

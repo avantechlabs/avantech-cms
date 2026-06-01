@@ -16,6 +16,7 @@ export type CmsToSiteMessage =
 
 export type FieldData = {
   id: string;
+  kind?: "image" | "text";
   value: string;
   editable?: boolean;
   rect: { left: number; top: number; width: number; height: number };
@@ -25,6 +26,6 @@ export type FieldData = {
 export type SiteToCmsMessage =
   | { type: "cms:ready" }
   | { type: "cms:fields"; fields: FieldData[] }
-  | { type: "cms:field-clicked"; fieldId: string }
+  | { type: "cms:field-clicked"; fieldId: string; kind?: FieldData["kind"] }
   | { type: "cms:field-changed"; fieldId: string; value: string }
   | { type: "cms:editing"; fieldId: string | null };

@@ -1,7 +1,7 @@
 import React from "react";
 import { createRoot } from "react-dom/client";
 import { ConvexProvider, ConvexReactClient } from "convex/react";
-import { CmsContentProvider, CmsText, useEditBridge } from "../../shared/useCmsPage.jsx";
+import { CmsContentProvider, CmsImage, CmsText, useEditBridge } from "../../shared/useCmsPage.jsx";
 import "./style.css";
 
 const IconDraft = () => (
@@ -129,31 +129,40 @@ function Site() {
 
       <section className="hero">
         <div className="hero-inner">
-          <span className="hero-eyebrow" data-cms-field="hero.eyebrow">
-            <CmsText fieldId="hero.eyebrow">Contract lifecycle management</CmsText>
-          </span>
-          <h1>
-            <span data-cms-field="hero.title.prefix">
-              <CmsText fieldId="hero.title.prefix">Every contract,</CmsText>
+          <div className="hero-copy">
+            <span className="hero-eyebrow" data-cms-field="hero.eyebrow">
+              <CmsText fieldId="hero.eyebrow">Contract lifecycle management</CmsText>
             </span>
-            <br />
-            <em data-cms-field="hero.title.emphasis">
-              <CmsText fieldId="hero.title.emphasis">controlled.</CmsText>
-            </em>
-          </h1>
-          <p className="hero-sub" data-cms-field="hero.subtitle">
-            <CmsText fieldId="hero.subtitle">
-              Sable automates contract drafting, review, and approval so your legal team spends time on strategy — not paperwork.
-            </CmsText>
-          </p>
-          <div className="hero-actions">
-            <a href="#" className="btn-gold" data-cms-field="hero.cta">
-              <CmsText fieldId="hero.cta">Request a demo</CmsText>
-            </a>
-            <a href="#features" className="btn-outline" data-cms-field="hero.cta-secondary">
-              <CmsText fieldId="hero.cta-secondary">Explore the platform</CmsText>
-            </a>
+            <h1>
+              <span data-cms-field="hero.title.prefix">
+                <CmsText fieldId="hero.title.prefix">Every contract,</CmsText>
+              </span>
+              <br />
+              <em data-cms-field="hero.title.emphasis">
+                <CmsText fieldId="hero.title.emphasis">controlled.</CmsText>
+              </em>
+            </h1>
+            <p className="hero-sub" data-cms-field="hero.subtitle">
+              <CmsText fieldId="hero.subtitle">
+                Sable automates contract drafting, review, and approval so your legal team spends time on strategy — not paperwork.
+              </CmsText>
+            </p>
+            <div className="hero-actions">
+              <a href="#" className="btn-gold" data-cms-field="hero.cta">
+                <CmsText fieldId="hero.cta">Request a demo</CmsText>
+              </a>
+              <a href="#features" className="btn-outline" data-cms-field="hero.cta-secondary">
+                <CmsText fieldId="hero.cta-secondary">Explore the platform</CmsText>
+              </a>
+            </div>
           </div>
+          <figure className="hero-visual">
+            <CmsImage
+              fieldId="hero.image"
+              src="/images/sable-contract-workspace.png"
+              alt="Contract review workspace"
+            />
+          </figure>
         </div>
         <div className="hero-rule" aria-hidden="true" />
       </section>
