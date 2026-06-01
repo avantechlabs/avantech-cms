@@ -468,11 +468,51 @@ html[data-mode="view"] .bottomBar {
 .recordPanelBody {
   flex: 1;
   min-height: 0;
+  overflow: auto;
 }
 .recordPanelEmpty {
   margin: 0;
   color: var(--text-muted);
   font-size: 14px;
+}
+.recordFieldGroup {
+  display: grid;
+  gap: var(--s-3);
+  margin-bottom: var(--s-5);
+}
+.recordFieldGroup h3 {
+  margin: 0;
+  color: var(--text);
+  font-size: 15px;
+  line-height: 1.3;
+}
+.recordField {
+  display: grid;
+  gap: var(--s-2);
+  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 500;
+}
+.recordField input,
+.recordField textarea {
+  width: 100%;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+  color: var(--text);
+  font: inherit;
+  font-size: 14px;
+  line-height: 1.45;
+  padding: 10px 11px;
+}
+.recordField textarea {
+  min-height: 108px;
+  resize: vertical;
+}
+.recordField input:focus,
+.recordField textarea:focus {
+  outline: 2px solid var(--gold-ring);
+  border-color: var(--gold);
 }
 .recordPanelActions {
   display: flex;

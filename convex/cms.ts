@@ -85,6 +85,37 @@ async function getCollectionItem(
     .unique();
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function setAtPath(source: unknown, path: string, value: unknown): Record<string, unknown> {
+  const keys = path.split(".").filter(Boolean);
+  if (keys.length === 0) throw new Error("Collection draft path must not be empty.");
+
+  const root: Record<string, unknown> = isRecord(source) ? { ...source } : {};
+  let cursor = root;
+  for (const key of keys.slice(0, -1)) {
+    const next = cursor[key];
+    const nextRecord = isRecord(next) ? { ...next } : {};
+    cursor[key] = nextRecord;
+    cursor = nextRecord;
+  }
+  cursor[keys[keys.length - 1]] = value;
+
+  return root;
+}
+
+function mergeDraftOverPublished(published: unknown, draft: unknown): unknown {
+  if (!isRecord(published) || !isRecord(draft)) return draft ?? published;
+
+  const merged: Record<string, unknown> = { ...published };
+  for (const [key, value] of Object.entries(draft)) {
+    merged[key] = mergeDraftOverPublished(merged[key], value);
+  }
+  return merged;
+}
+
 function storageIdFromFieldValue(value: string): Id<"_storage"> | null {
   if (!value.startsWith(STORAGE_REFERENCE_PREFIX)) return null;
 
@@ -357,6 +388,63 @@ export const listPublishedCollectionItems = query({
     return items.map((item) => ({
       slug: item.slug,
       data: item.publishedData,
+    }));
+  },
+});
+
+export const saveCollectionItemDraft = mutation({
+  args: {
+    projectSlug: v.string(),
+    collectionKey: v.string(),
+    slug: v.string(),
+    path: v.string(),
+    value: v.any(),
+  },
+  handler: async (ctx, args) => {
+    const project = await getProject(ctx, args.projectSlug);
+    if (!project) return null;
+
+    const item = await getCollectionItem(
+      ctx,
+      project._id,
+      args.collectionKey,
+      args.slug,
+    );
+    if (!item) return null;
+
+    const draftData = setAtPath(item.draftData, args.path, args.value);
+    await ctx.db.patch(item._id, {
+      draftData,
+      draftUpdatedAt: Date.now(),
+      updatedAt: Date.now(),
+    });
+
+    return {
+      slug: item.slug,
+      data: mergeDraftOverPublished(item.publishedData, draftData),
+    };
+  },
+});
+
+export const listPreviewCollectionItems = query({
+  args: {
+    projectSlug: v.string(),
+    collectionKey: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const project = await getProject(ctx, args.projectSlug);
+    if (!project) return [];
+
+    const items = await ctx.db
+      .query("collectionItems")
+      .withIndex("by_projectId_and_collectionKey", (q) =>
+        q.eq("projectId", project._id).eq("collectionKey", args.collectionKey),
+      )
+      .take(200);
+
+    return items.map((item) => ({
+      slug: item.slug,
+      data: mergeDraftOverPublished(item.publishedData, item.draftData),
     }));
   },
 });

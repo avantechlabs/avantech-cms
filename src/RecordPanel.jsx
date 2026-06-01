@@ -1,7 +1,50 @@
 import React from "react";
 
-export function RecordPanel({ collection, record, onClose, children }) {
+function fieldGroups(collection) {
+  if (Array.isArray(collection?.groups) && collection.groups.length) {
+    return collection.groups.map((group) => ({
+      label: group.label,
+      fields: Array.isArray(group.fields) ? group.fields : [],
+    }));
+  }
+  return [{ label: null, fields: Array.isArray(collection?.fields) ? collection.fields : [] }];
+}
+
+function getAtPath(source, path) {
+  return path
+    .split(".")
+    .filter(Boolean)
+    .reduce((value, key) => (value && typeof value === "object" ? value[key] : undefined), source);
+}
+
+function FieldControl({ field, value, onChange }) {
+  const id = `record-field-${field.path}`;
+  const label = field.label ?? field.path;
+  const type = field.type ?? "text";
+  const stringValue = value == null ? "" : String(value);
+
+  if (type === "textarea" || type === "longText") {
+    return (
+      <label className="recordField" htmlFor={id}>
+        <span>{label}</span>
+        <textarea id={id} value={stringValue} onChange={(event) => onChange(field, event.target.value)} />
+      </label>
+    );
+  }
+
+  return (
+    <label className="recordField" htmlFor={id}>
+      <span>{label}</span>
+      <input id={id} type="text" value={stringValue} onChange={(event) => onChange(field, event.target.value)} />
+    </label>
+  );
+}
+
+export function RecordPanel({ collection, record, recordData, onFieldChange, onClose, children }) {
   if (!record) return null;
+
+  const groups = fieldGroups(collection);
+  const hasFields = groups.some((group) => group.fields.length > 0);
 
   return (
     <aside className="recordPanel" aria-label={`Edit ${record.itemSlug}`}>
@@ -18,7 +61,23 @@ export function RecordPanel({ collection, record, onClose, children }) {
       </div>
       {children ?? (
         <div className="recordPanelBody">
-          <p className="recordPanelEmpty">Record editor coming next.</p>
+          {hasFields ? (
+            groups.map((group, index) => (
+              <section className="recordFieldGroup" key={group.label ?? index}>
+                {group.label && <h3>{group.label}</h3>}
+                {group.fields.map((field) => (
+                  <FieldControl
+                    field={field}
+                    key={field.path}
+                    value={getAtPath(recordData, field.path)}
+                    onChange={(changedField, value) => onFieldChange?.(changedField.path, value)}
+                  />
+                ))}
+              </section>
+            ))
+          ) : (
+            <p className="recordPanelEmpty">No editable fields yet.</p>
+          )}
         </div>
       )}
       <div className="recordPanelActions">

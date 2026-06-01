@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { ConvexProvider, ConvexReactClient } from "convex/react";
+import { ConvexProvider, ConvexReactClient, useMutation, useQuery } from "convex/react";
+import { api } from "../convex/_generated/api.js";
 import { CollectionsRailSection } from "./CollectionsRailSection.jsx";
 import { RecordPanel } from "./RecordPanel.jsx";
 import { useCmsProject } from "./hooks/useCmsProject.js";
@@ -127,6 +128,12 @@ function Cms() {
 
   const changeCount = draftFieldIds.length;
   const draftSignature = draftFieldIds.slice().sort().join("|");
+  const selectedCollectionKey = selectedRecord?.collectionKey ?? null;
+  const previewCollectionItems = useQuery(
+    api.cms.listPreviewCollectionItems,
+    selectedCollectionKey ? { projectSlug, collectionKey: selectedCollectionKey } : "skip",
+  ) ?? [];
+  const saveCollectionItemDraft = useMutation(api.cms.saveCollectionItemDraft);
 
   const { iframeRef, send } = useIframeMessaging({
     previewOrigin,
@@ -343,6 +350,9 @@ function Cms() {
   const selectedRecordCollection = selectedRecord
     ? collections.find((collection) => collection.key === selectedRecord.collectionKey)
     : null;
+  const selectedRecordData = selectedRecord
+    ? previewCollectionItems.find((item) => item.slug === selectedRecord.itemSlug)?.data
+    : null;
   const imageFieldId = selectedImageField?.id ?? null;
   const imageTitle = imageFieldId ? imageFieldTitle(imageFieldId) : "";
   const imageIsDraft = imageFieldId ? draftFieldIds.includes(imageFieldId) : false;
@@ -543,6 +553,16 @@ function Cms() {
         <RecordPanel
           collection={selectedRecordCollection}
           record={selectedRecord}
+          recordData={selectedRecordData}
+          onFieldChange={(path, value) => {
+            saveCollectionItemDraft({
+              projectSlug,
+              collectionKey: selectedRecord.collectionKey,
+              slug: selectedRecord.itemSlug,
+              path,
+              value,
+            }).then(() => showToast("Saved"));
+          }}
           onClose={() => setSelectedRecord(null)}
         />
       )}

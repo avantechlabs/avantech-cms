@@ -488,3 +488,92 @@ test("published collection records are listed by project and collection only", a
   ]);
   expect(missingCollection).toEqual([]);
 });
+
+test("collection item drafts save by nested path and preview over published data", async () => {
+  const t = convexTest(schema, modules);
+  await t.mutation(api.cms.ensureSeedData);
+  await t.mutation(api.cms.seedPublishedCollectionItems, {
+    projectSlug: "project-a",
+    collectionKey: "projects",
+    items: [
+      {
+        slug: "brand-refresh",
+        data: {
+          card: {
+            title: "Brand refresh",
+            description: "Published description",
+          },
+          detail: {
+            heroTitle: "Published hero",
+          },
+        },
+      },
+    ],
+  });
+  await t.mutation(api.cms.seedPublishedCollectionItems, {
+    projectSlug: "project-b",
+    collectionKey: "projects",
+    items: [
+      {
+        slug: "brand-refresh",
+        data: { card: { title: "Project B title" } },
+      },
+    ],
+  });
+
+  await t.mutation(api.cms.saveCollectionItemDraft, {
+    projectSlug: "project-a",
+    collectionKey: "projects",
+    slug: "brand-refresh",
+    path: "card.title",
+    value: "Draft brand refresh",
+  });
+
+  const previewRecords = await t.query(api.cms.listPreviewCollectionItems, {
+    projectSlug: "project-a",
+    collectionKey: "projects",
+  });
+  const publicRecords = await t.query(api.cms.listPublishedCollectionItems, {
+    projectSlug: "project-a",
+    collectionKey: "projects",
+  });
+  const projectBPreview = await t.query(api.cms.listPreviewCollectionItems, {
+    projectSlug: "project-b",
+    collectionKey: "projects",
+  });
+
+  expect(previewRecords).toEqual([
+    {
+      slug: "brand-refresh",
+      data: {
+        card: {
+          title: "Draft brand refresh",
+          description: "Published description",
+        },
+        detail: {
+          heroTitle: "Published hero",
+        },
+      },
+    },
+  ]);
+  expect(publicRecords).toEqual([
+    {
+      slug: "brand-refresh",
+      data: {
+        card: {
+          title: "Brand refresh",
+          description: "Published description",
+        },
+        detail: {
+          heroTitle: "Published hero",
+        },
+      },
+    },
+  ]);
+  expect(projectBPreview).toEqual([
+    {
+      slug: "brand-refresh",
+      data: { card: { title: "Project B title" } },
+    },
+  ]);
+});
