@@ -252,3 +252,142 @@ test("image draft uploads are isolated by project slug and page slug", async () 
   expect(projectA["hero.image"]).toBe("convex-storage:project-a-draft");
   expect(projectB["hero.image"]).toBe("/project-b-published.jpg");
 });
+
+test("publishing an image draft promotes it to published content and clears drafts", async () => {
+  const t = convexTest(schema, modules);
+  await t.mutation(api.cms.ensureSeedData);
+
+  const originalStorageId = await storeImage(t, "original image");
+  const draftStorageId = await storeImage(t, "replacement image");
+  const originalCanonicalValue = `convex-storage:${originalStorageId}`;
+  const draftCanonicalValue = `convex-storage:${draftStorageId}`;
+
+  await t.mutation(api.cms.saveDraft, {
+    projectSlug,
+    pageSlug,
+    fields: { "hero.image": originalCanonicalValue },
+  });
+  await t.mutation(api.cms.publishPage, { projectSlug, pageSlug });
+  await t.mutation(api.cms.saveDraft, {
+    projectSlug,
+    pageSlug,
+    fields: { "hero.image": draftCanonicalValue },
+  });
+
+  const pageWithDraft = await t.query(api.cms.getPage, { projectSlug, pageSlug });
+  const publishedFields = await t.mutation(api.cms.publishPage, {
+    projectSlug,
+    pageSlug,
+  });
+  const storedContent = await getStoredPageContent(t);
+  const pageAfterPublish = await t.query(api.cms.getPage, { projectSlug, pageSlug });
+  const publicFields = await t.query(api.cms.getPublishedContent, {
+    projectSlug,
+    pageSlug,
+  });
+  const draftUrl = await t.run(async (ctx) => {
+    return await ctx.storage.getUrl(draftStorageId);
+  });
+
+  expect(pageWithDraft?.draftFields["hero.image"]).toBe(draftUrl);
+  expect(publishedFields?.["hero.image"]).toBe(draftCanonicalValue);
+  expect(storedContent.publishedFields["hero.image"]).toBe(draftCanonicalValue);
+  expect(storedContent.draftFields).toEqual({});
+  expect(pageAfterPublish?.draftFields).toEqual({});
+  expect(publicFields["hero.image"]).toBe(draftUrl);
+});
+
+test("discarding an image draft restores preview to the published image", async () => {
+  const t = convexTest(schema, modules);
+  await t.mutation(api.cms.ensureSeedData);
+
+  const publishedStorageId = await storeImage(t, "published image");
+  const draftStorageId = await storeImage(t, "discarded image");
+  const publishedCanonicalValue = `convex-storage:${publishedStorageId}`;
+  const draftCanonicalValue = `convex-storage:${draftStorageId}`;
+
+  await t.mutation(api.cms.saveDraft, {
+    projectSlug,
+    pageSlug,
+    fields: { "hero.image": publishedCanonicalValue },
+  });
+  await t.mutation(api.cms.publishPage, { projectSlug, pageSlug });
+  await t.mutation(api.cms.saveDraft, {
+    projectSlug,
+    pageSlug,
+    fields: { "hero.image": draftCanonicalValue },
+  });
+
+  const draftPreview = await t.query(api.cms.getPreviewContent, {
+    projectSlug,
+    pageSlug,
+  });
+  await t.mutation(api.cms.discardDrafts, { projectSlug, pageSlug });
+  const storedContent = await getStoredPageContent(t);
+  const previewAfterDiscard = await t.query(api.cms.getPreviewContent, {
+    projectSlug,
+    pageSlug,
+  });
+  const publicFields = await t.query(api.cms.getPublishedContent, {
+    projectSlug,
+    pageSlug,
+  });
+  const publishedUrl = await t.run(async (ctx) => {
+    return await ctx.storage.getUrl(publishedStorageId);
+  });
+  const draftUrl = await t.run(async (ctx) => {
+    return await ctx.storage.getUrl(draftStorageId);
+  });
+
+  expect(draftPreview["hero.image"]).toBe(draftUrl);
+  expect(storedContent.publishedFields["hero.image"]).toBe(publishedCanonicalValue);
+  expect(storedContent.draftFields).toEqual({});
+  expect(previewAfterDiscard["hero.image"]).toBe(publishedUrl);
+  expect(publicFields["hero.image"]).toBe(publishedUrl);
+});
+
+test("text and image drafts publish together and clear the unpublished page state", async () => {
+  const t = convexTest(schema, modules);
+  await t.mutation(api.cms.ensureSeedData);
+
+  const storageId = await storeImage(t, "mixed publish image");
+  const canonicalValue = `convex-storage:${storageId}`;
+
+  await t.mutation(api.cms.seedDiscoveredFields, {
+    projectSlug,
+    pageSlug,
+    fields: [
+      { id: "hero.title", value: "Original title" },
+      { id: "hero.image", value: "/original-hero.jpg" },
+    ],
+  });
+  await t.mutation(api.cms.saveDraft, {
+    projectSlug,
+    pageSlug,
+    fields: {
+      "hero.title": "Published title",
+      "hero.image": canonicalValue,
+    },
+  });
+
+  await t.mutation(api.cms.publishPage, { projectSlug, pageSlug });
+  const storedContent = await getStoredPageContent(t);
+  const publicFields = await t.query(api.cms.getPublishedContent, {
+    projectSlug,
+    pageSlug,
+  });
+  const pageAfterPublish = await t.query(api.cms.getPage, {
+    projectSlug,
+    pageSlug,
+  });
+  const imageUrl = await t.run(async (ctx) => {
+    return await ctx.storage.getUrl(storageId);
+  });
+
+  expect(storedContent.draftFields).toEqual({});
+  expect(storedContent.publishedFields["hero.title"]).toBe("Published title");
+  expect(storedContent.publishedFields["hero.image"]).toBe(canonicalValue);
+  expect(publicFields["hero.title"]).toBe("Published title");
+  expect(publicFields["hero.image"]).toBe(imageUrl);
+  expect(pageAfterPublish?.draftFields).toEqual({});
+});
