@@ -494,7 +494,8 @@ html[data-mode="view"] .bottomBar {
   font-weight: 500;
 }
 .recordField input,
-.recordField textarea {
+.recordField textarea,
+.recordField select {
   width: 100%;
   border: 1px solid var(--line-strong);
   border-radius: var(--r-md);
@@ -509,10 +510,30 @@ html[data-mode="view"] .bottomBar {
   min-height: 108px;
   resize: vertical;
 }
+.recordField select[multiple] {
+  min-height: 96px;
+}
+.recordFieldCheckbox {
+  display: flex;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+}
+.recordFieldCheckbox input {
+  width: 18px;
+  height: 18px;
+}
 .recordField input:focus,
-.recordField textarea:focus {
+.recordField textarea:focus,
+.recordField select:focus {
   outline: 2px solid var(--gold-ring);
   border-color: var(--gold);
+}
+.recordFieldUnsupported {
+  border: 1px solid var(--danger);
+  border-radius: var(--r-md);
+  color: var(--danger);
+  font-size: 13px;
+  padding: 10px 11px;
 }
 .collectionRecordList {
   display: grid;

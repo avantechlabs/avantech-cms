@@ -94,3 +94,89 @@ test("emits changed field path and value from simple controls", () => {
 
   expect(onFieldChange).toHaveBeenCalledWith("card.title", "Draft title");
 });
+
+test("renders scalar controls from field definitions", () => {
+  const html = renderToStaticMarkup(
+    <RecordPanel
+      collection={{
+        key: "projects",
+        label: "Projects",
+        fields: [
+          { path: "stats.count", label: "Count", type: "number" },
+          { path: "featured", label: "Featured", type: "boolean" },
+          { path: "status", label: "Status", type: "select", options: ["draft", "live"] },
+          { path: "tags", label: "Tags", type: "multiSelect", options: ["brand", "film"] },
+          { path: "url", label: "URL", type: "url" },
+          { path: "email", label: "Email", type: "email" },
+          { path: "date", label: "Date", type: "date" },
+          { path: "publishedAt", label: "Published at", type: "datetime" },
+          { path: "accent", label: "Accent", type: "color" },
+          { path: "unknown", label: "Unknown", type: "relationship" },
+        ],
+      }}
+      record={{ collectionKey: "projects", itemSlug: "brand-refresh" }}
+      recordData={{
+        stats: { count: 12 },
+        featured: true,
+        status: "live",
+        tags: ["brand"],
+        url: "https://example.com",
+        email: "owner@example.com",
+        date: "2026-06-01",
+        publishedAt: "2026-06-01T10:00",
+        accent: "#fdb714",
+      }}
+      onFieldChange={() => {}}
+      onClose={() => {}}
+    />,
+  );
+
+  expect(html).toContain('type="number"');
+  expect(html).toContain('type="checkbox"');
+  expect(html).toContain("<select");
+  expect(html).toContain("multiple=");
+  expect(html).toContain('type="url"');
+  expect(html).toContain('type="email"');
+  expect(html).toContain('type="date"');
+  expect(html).toContain('type="datetime-local"');
+  expect(html).toContain('type="color"');
+  expect(html).toContain("Unsupported field type: relationship");
+});
+
+test("emits typed scalar values through the panel interface", () => {
+  const onFieldChange = vi.fn();
+  document.body.innerHTML = `<div id="root"></div>`;
+
+  act(() => {
+    createRoot(document.getElementById("root")).render(
+      <RecordPanel
+        collection={{
+          key: "projects",
+          label: "Projects",
+          fields: [
+            { path: "stats.count", label: "Count", type: "number" },
+            { path: "featured", label: "Featured", type: "boolean" },
+          ],
+        }}
+        record={{ collectionKey: "projects", itemSlug: "brand-refresh" }}
+        recordData={{ stats: { count: 12 }, featured: false }}
+        onFieldChange={onFieldChange}
+        onClose={() => {}}
+      />,
+    );
+  });
+
+  const number = document.querySelector('input[type="number"]');
+  act(() => {
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(number, "42");
+    number.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+
+  const checkbox = document.querySelector('input[type="checkbox"]');
+  act(() => {
+    checkbox.click();
+  });
+
+  expect(onFieldChange).toHaveBeenCalledWith("stats.count", 42);
+  expect(onFieldChange).toHaveBeenCalledWith("featured", true);
+});

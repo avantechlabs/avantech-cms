@@ -22,6 +22,15 @@ function FieldControl({ field, value, onChange }) {
   const label = field.label ?? field.path;
   const type = field.type ?? "text";
   const stringValue = value == null ? "" : String(value);
+  const options = Array.isArray(field.options) ? field.options : [];
+
+  function optionValue(option) {
+    return typeof option === "object" && option !== null ? option.value : option;
+  }
+
+  function optionLabel(option) {
+    return typeof option === "object" && option !== null ? option.label ?? option.value : option;
+  }
 
   if (type === "textarea" || type === "longText") {
     return (
@@ -29,6 +38,93 @@ function FieldControl({ field, value, onChange }) {
         <span>{label}</span>
         <textarea id={id} value={stringValue} onChange={(event) => onChange(field, event.target.value)} />
       </label>
+    );
+  }
+
+  if (type === "number") {
+    return (
+      <label className="recordField" htmlFor={id}>
+        <span>{label}</span>
+        <input
+          id={id}
+          type="number"
+          value={stringValue}
+          onChange={(event) =>
+            onChange(field, event.target.value === "" ? null : Number(event.target.value))
+          }
+        />
+      </label>
+    );
+  }
+
+  if (type === "boolean") {
+    return (
+      <label className="recordField recordFieldCheckbox" htmlFor={id}>
+        <input
+          checked={Boolean(value)}
+          id={id}
+          type="checkbox"
+          onChange={(event) => onChange(field, event.target.checked)}
+        />
+        <span>{label}</span>
+      </label>
+    );
+  }
+
+  if (type === "select" || type === "multiSelect") {
+    const selectedValues = Array.isArray(value) ? value.map(String) : [stringValue];
+    return (
+      <label className="recordField" htmlFor={id}>
+        <span>{label}</span>
+        <select
+          id={id}
+          multiple={type === "multiSelect"}
+          value={type === "multiSelect" ? selectedValues : stringValue}
+          onChange={(event) => {
+            if (type === "multiSelect") {
+              onChange(
+                field,
+                [...event.target.selectedOptions].map((option) => option.value),
+              );
+            } else {
+              onChange(field, event.target.value);
+            }
+          }}
+        >
+          {type === "select" && <option value="">Choose...</option>}
+          {options.map((option) => {
+            const nextValue = optionValue(option);
+            return (
+              <option key={String(nextValue)} value={String(nextValue)}>
+                {optionLabel(option)}
+              </option>
+            );
+          })}
+        </select>
+      </label>
+    );
+  }
+
+  if (["url", "email", "date", "datetime", "color"].includes(type)) {
+    const inputType = type === "datetime" ? "datetime-local" : type;
+    return (
+      <label className="recordField" htmlFor={id}>
+        <span>{label}</span>
+        <input
+          id={id}
+          type={inputType}
+          value={stringValue}
+          onChange={(event) => onChange(field, event.target.value)}
+        />
+      </label>
+    );
+  }
+
+  if (type !== "text") {
+    return (
+      <div className="recordFieldUnsupported" role="alert">
+        Unsupported field type: {type}
+      </div>
     );
   }
 
