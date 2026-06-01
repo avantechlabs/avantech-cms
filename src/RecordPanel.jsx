@@ -17,6 +17,19 @@ function getAtPath(source, path) {
     .reduce((value, key) => (value && typeof value === "object" ? value[key] : undefined), source);
 }
 
+function setAtPath(source, path, value) {
+  const keys = path.split(".").filter(Boolean);
+  const root = source && typeof source === "object" && !Array.isArray(source) ? { ...source } : {};
+  let cursor = root;
+  for (const key of keys.slice(0, -1)) {
+    const next = cursor[key];
+    cursor[key] = next && typeof next === "object" && !Array.isArray(next) ? { ...next } : {};
+    cursor = cursor[key];
+  }
+  cursor[keys[keys.length - 1]] = value;
+  return root;
+}
+
 function FieldControl({ field, value, onChange }) {
   const id = `record-field-${field.path}`;
   const label = field.label ?? field.path;
@@ -38,6 +51,96 @@ function FieldControl({ field, value, onChange }) {
         <span>{label}</span>
         <textarea id={id} value={stringValue} onChange={(event) => onChange(field, event.target.value)} />
       </label>
+    );
+  }
+
+  if (type === "object" || type === "group") {
+    const fields = Array.isArray(field.fields) ? field.fields : [];
+    return (
+      <fieldset className="recordNestedGroup">
+        <legend>{label}</legend>
+        {fields.map((child) => (
+          <FieldControl
+            field={{ ...child, path: `${field.path}.${child.path}` }}
+            key={child.path}
+            value={getAtPath(value, child.path)}
+            onChange={onChange}
+          />
+        ))}
+      </fieldset>
+    );
+  }
+
+  if (type === "list") {
+    const itemFields = Array.isArray(field.itemFields) ? field.itemFields : [];
+    const items = Array.isArray(value) ? value : [];
+    const defaultItem = field.defaultItem ?? {};
+
+    function updateItems(nextItems) {
+      onChange(field, nextItems);
+    }
+
+    return (
+      <div className="recordListField">
+        <div className="recordListHead">
+          <span>{label}</span>
+          <button type="button" className="barBtn" onClick={() => updateItems([...items, defaultItem])}>
+            Add
+          </button>
+        </div>
+        {items.map((item, index) => (
+          <div className="recordListItem" key={item.id ?? index}>
+            <div className="recordListItemHead">
+              <span>Item {index + 1}</span>
+              <div className="recordListActions">
+                <button
+                  type="button"
+                  className="barBtn"
+                  disabled={index === 0}
+                  onClick={() => {
+                    const next = [...items];
+                    [next[index - 1], next[index]] = [next[index], next[index - 1]];
+                    updateItems(next);
+                  }}
+                >
+                  Up
+                </button>
+                <button
+                  type="button"
+                  className="barBtn"
+                  disabled={index === items.length - 1}
+                  onClick={() => {
+                    const next = [...items];
+                    [next[index + 1], next[index]] = [next[index], next[index + 1]];
+                    updateItems(next);
+                  }}
+                >
+                  Down
+                </button>
+                <button
+                  type="button"
+                  className="barBtn"
+                  onClick={() => updateItems(items.filter((_, itemIndex) => itemIndex !== index))}
+                >
+                  Remove
+                </button>
+              </div>
+            </div>
+            {itemFields.map((itemField) => (
+              <FieldControl
+                field={itemField}
+                key={itemField.path}
+                value={getAtPath(item, itemField.path)}
+                onChange={(changedField, nextValue) => {
+                  const next = [...items];
+                  next[index] = setAtPath(next[index], changedField.path, nextValue);
+                  updateItems(next);
+                }}
+              />
+            ))}
+          </div>
+        ))}
+      </div>
     );
   }
 

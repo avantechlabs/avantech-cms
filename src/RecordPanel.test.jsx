@@ -180,3 +180,86 @@ test("emits typed scalar values through the panel interface", () => {
   expect(onFieldChange).toHaveBeenCalledWith("stats.count", 42);
   expect(onFieldChange).toHaveBeenCalledWith("featured", true);
 });
+
+test("renders object fields and emits nested object paths", () => {
+  const onFieldChange = vi.fn();
+  document.body.innerHTML = `<div id="root"></div>`;
+
+  act(() => {
+    createRoot(document.getElementById("root")).render(
+      <RecordPanel
+        collection={{
+          key: "projects",
+          label: "Projects",
+          fields: [
+            {
+              path: "seo",
+              label: "SEO",
+              type: "object",
+              fields: [{ path: "title", label: "SEO title", type: "text" }],
+            },
+          ],
+        }}
+        record={{ collectionKey: "projects", itemSlug: "brand-refresh" }}
+        recordData={{ seo: { title: "Published SEO title" } }}
+        onFieldChange={onFieldChange}
+        onClose={() => {}}
+      />,
+    );
+  });
+
+  const input = document.querySelector("input");
+  act(() => {
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(
+      input,
+      "Draft SEO title",
+    );
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+
+  expect(onFieldChange).toHaveBeenCalledWith("seo.title", "Draft SEO title");
+});
+
+test("adds and removes list items as draft operations", () => {
+  const onFieldChange = vi.fn();
+  document.body.innerHTML = `<div id="root"></div>`;
+
+  act(() => {
+    createRoot(document.getElementById("root")).render(
+      <RecordPanel
+        collection={{
+          key: "projects",
+          label: "Projects",
+          fields: [
+            {
+              path: "benefits",
+              label: "Benefits",
+              type: "list",
+              defaultItem: { title: "" },
+              itemFields: [{ path: "title", label: "Title", type: "text" }],
+            },
+          ],
+        }}
+        record={{ collectionKey: "projects", itemSlug: "brand-refresh" }}
+        recordData={{ benefits: [{ title: "First" }] }}
+        onFieldChange={onFieldChange}
+        onClose={() => {}}
+      />,
+    );
+  });
+
+  act(() => {
+    [...document.querySelectorAll("button")].find((button) => button.textContent === "Add").click();
+  });
+  act(() => {
+    [...document.querySelectorAll("button")]
+      .find((button) => button.textContent === "Remove")
+      .click();
+  });
+
+  expect(onFieldChange).toHaveBeenCalledWith("benefits", [
+    { title: "First" },
+    { title: "" },
+  ]);
+  expect(onFieldChange).toHaveBeenCalledWith("benefits", []);
+});

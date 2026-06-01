@@ -535,6 +535,33 @@ html[data-mode="view"] .bottomBar {
   font-size: 13px;
   padding: 10px 11px;
 }
+.recordNestedGroup,
+.recordListField,
+.recordListItem {
+  display: grid;
+  gap: var(--s-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  padding: var(--s-3);
+}
+.recordNestedGroup legend,
+.recordListHead,
+.recordListItemHead {
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 650;
+}
+.recordListHead,
+.recordListItemHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-2);
+}
+.recordListActions {
+  display: flex;
+  gap: var(--s-1);
+}
 .collectionRecordList {
   display: grid;
   gap: var(--s-2);
