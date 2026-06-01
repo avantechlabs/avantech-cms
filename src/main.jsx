@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { ConvexProvider, ConvexReactClient } from "convex/react";
 import { CollectionsRailSection } from "./CollectionsRailSection.jsx";
+import { RecordPanel } from "./RecordPanel.jsx";
 import { useCmsProject } from "./hooks/useCmsProject.js";
 import { useFieldManager } from "./hooks/useFieldManager.js";
 import { useIframeMessaging } from "./hooks/useIframeMessaging.js";
@@ -111,6 +112,7 @@ function Cms() {
   const [hint, setHint] = useState(false);
   const [collections, setCollections] = useState([]);
   const [selectedField, setSelectedField] = useState(null);
+  const [selectedRecord, setSelectedRecord] = useState(null);
   const [pendingPreview, setPendingPreview] = useState(null); // { fieldId, url }
   const [isUploading, setIsUploading] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
@@ -160,6 +162,10 @@ function Cms() {
       }
     },
     onCollections: setCollections,
+    onRecordClicked: (collectionKey, itemSlug) => {
+      closeImageCard();
+      setSelectedRecord({ collectionKey, itemSlug });
+    },
     onFieldChanged: (fieldId, value) => {
       saveDraftField(fieldId, value);
       showToast("Saved");
@@ -191,6 +197,7 @@ function Cms() {
     resetForProject();
     setCollections([]);
     setSelectedField(null);
+    setSelectedRecord(null);
   }, [projectSlug]);
 
   // Mode → html attribute (drives chrome recede) + iframe affordances + first-run hint.
@@ -333,6 +340,9 @@ function Cms() {
 
   const projectName = project?.name || projectSlug;
   const selectedImageField = selectedField?.kind === "image" ? selectedField : null;
+  const selectedRecordCollection = selectedRecord
+    ? collections.find((collection) => collection.key === selectedRecord.collectionKey)
+    : null;
   const imageFieldId = selectedImageField?.id ?? null;
   const imageTitle = imageFieldId ? imageFieldTitle(imageFieldId) : "";
   const imageIsDraft = imageFieldId ? draftFieldIds.includes(imageFieldId) : false;
@@ -527,6 +537,14 @@ function Cms() {
             onChange={onImageFileChange}
           />
         </aside>
+      )}
+
+      {selectedRecord && mode === "edit" && (
+        <RecordPanel
+          collection={selectedRecordCollection}
+          record={selectedRecord}
+          onClose={() => setSelectedRecord(null)}
+        />
       )}
 
       {/* Toast + first-run hint */}

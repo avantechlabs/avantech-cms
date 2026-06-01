@@ -6,6 +6,7 @@
   if (!parentOrigin) return;
 
   const FIELD_SELECTOR = "[data-cms-field]";
+  const RECORD_SELECTOR = "[data-cms-record]";
   const COLLECTIONS_REGISTRY = "__AVANTECH_CMS_COLLECTIONS__";
   const scheduleFrame = window.requestAnimationFrame || ((callback) => setTimeout(callback, 0));
 
@@ -143,6 +144,24 @@
       rect: { left: r.left, top: r.top, width: r.width, height: r.height },
     };
   }
+  function parseRecordId(value) {
+    const [collectionKey, ...slugParts] = String(value || "").split(":");
+    const itemSlug = slugParts.join(":");
+    if (!collectionKey || !itemSlug) return null;
+    return { collectionKey, itemSlug };
+  }
+  function recordFromElement(el) {
+    const identity = parseRecordId(el.dataset.cmsRecord);
+    if (!identity) return null;
+    const r = el.getBoundingClientRect();
+    return {
+      ...identity,
+      rect: { left: r.left, top: r.top, width: r.width, height: r.height },
+    };
+  }
+  function allRecords() {
+    return [...document.querySelectorAll(RECORD_SELECTOR)].map(recordFromElement).filter(Boolean);
+  }
   function send(message) {
     parent.postMessage(message, parentOrigin);
   }
@@ -158,6 +177,7 @@
     if (typeof document === "undefined") return;
     markLeaves();
     send({ type: "cms:fields", fields: allFields().map(fieldFromElement) });
+    send({ type: "cms:records", records: allRecords() });
   }
   function scheduleFields() {
     // Never re-report field geometry/values mid-edit — it would surface
@@ -248,6 +268,20 @@
   document.addEventListener(
     "click",
     (event) => {
+      const record = event.target.closest(RECORD_SELECTOR);
+      const recordIdentity = record && parseRecordId(record.dataset.cmsRecord);
+      if (editMode && recordIdentity) {
+        event.preventDefault();
+        event.stopPropagation();
+        commit();
+        send({
+          type: "cms:record-clicked",
+          collectionKey: recordIdentity.collectionKey,
+          itemSlug: recordIdentity.itemSlug,
+        });
+        return;
+      }
+
       const field = event.target.closest(FIELD_SELECTOR);
       if (editMode && field && isLeaf(field)) {
         event.preventDefault();

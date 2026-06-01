@@ -425,6 +425,61 @@ html[data-mode="view"] .bottomBar {
 .imageCardActions { display: flex; gap: var(--s-2); }
 .imageCardActions .primary { flex: 1; justify-content: center; }
 
+.recordPanel {
+  position: fixed;
+  right: var(--s-5);
+  top: 96px;
+  bottom: 112px;
+  width: min(440px, calc(100vw - 32px));
+  z-index: 38;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+  padding: var(--s-5);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow-xl);
+}
+.recordPanelHead {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--s-4);
+}
+.recordPanelMeta {
+  display: grid;
+  gap: var(--s-1);
+  min-width: 0;
+}
+.recordPanelEyebrow {
+  font-family: var(--font-meta);
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+.recordPanelTitle {
+  color: var(--text);
+  font-size: 20px;
+  font-weight: 650;
+  overflow-wrap: anywhere;
+}
+.recordPanelBody {
+  flex: 1;
+  min-height: 0;
+}
+.recordPanelEmpty {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 14px;
+}
+.recordPanelActions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: auto;
+}
+
 .fileInput {
   display: none;
 }

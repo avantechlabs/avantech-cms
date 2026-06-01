@@ -22,6 +22,12 @@ export type FieldData = {
   rect: { left: number; top: number; width: number; height: number };
 };
 
+export type RecordRegionData = {
+  collectionKey: string;
+  itemSlug: string;
+  rect: { left: number; top: number; width: number; height: number };
+};
+
 export type CollectionDefinition = {
   key: string;
   label: string;
@@ -37,7 +43,9 @@ export type CollectionDefinition = {
 export type SiteToCmsMessage =
   | { type: "cms:ready" }
   | { type: "cms:fields"; fields: FieldData[] }
+  | { type: "cms:records"; records: RecordRegionData[] }
   | { type: "cms:collections"; collections: CollectionDefinition[] }
   | { type: "cms:field-clicked"; fieldId: string; kind?: FieldData["kind"] }
+  | { type: "cms:record-clicked"; collectionKey: string; itemSlug: string }
   | { type: "cms:field-changed"; fieldId: string; value: string }
   | { type: "cms:editing"; fieldId: string | null };
