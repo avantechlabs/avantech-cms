@@ -116,6 +116,18 @@ function mergeDraftOverPublished(published: unknown, draft: unknown): unknown {
   return merged;
 }
 
+function valuesEqual(a: unknown, b: unknown) {
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+
+function hasMeaningfulCollectionDraft(item: Doc<"collectionItems">) {
+  if (item.draftData === undefined) return false;
+  return !valuesEqual(
+    mergeDraftOverPublished(item.publishedData, item.draftData),
+    item.publishedData,
+  );
+}
+
 function storageIdFromFieldValue(value: string): Id<"_storage"> | null {
   if (!value.startsWith(STORAGE_REFERENCE_PREFIX)) return null;
 
@@ -446,6 +458,112 @@ export const listPreviewCollectionItems = query({
       slug: item.slug,
       data: mergeDraftOverPublished(item.publishedData, item.draftData),
     }));
+  },
+});
+
+export const getSiteDraftState = query({
+  args: {
+    projectSlug: v.string(),
+    pageSlug: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const result = await requireContent(ctx, args.projectSlug, args.pageSlug);
+    if (!result) {
+      return {
+        pageDraftFieldIds: [],
+        collectionDraftCount: 0,
+        totalDraftCount: 0,
+      };
+    }
+
+    const draftFields = result.content?.draftFields ?? {};
+    const publishedFields = result.content?.publishedFields ?? {};
+    const pageDraftFieldIds = Object.keys(draftFields)
+      .filter((fieldId) => draftFields[fieldId] !== publishedFields[fieldId])
+      .sort();
+
+    const collectionItems = await ctx.db
+      .query("collectionItems")
+      .withIndex("by_projectId", (q) => q.eq("projectId", result.project._id))
+      .take(500);
+    const collectionDraftCount = collectionItems.filter(hasMeaningfulCollectionDraft).length;
+
+    return {
+      pageDraftFieldIds,
+      collectionDraftCount,
+      totalDraftCount: pageDraftFieldIds.length + collectionDraftCount,
+    };
+  },
+});
+
+export const publishSite = mutation({
+  args: {
+    projectSlug: v.string(),
+    pageSlug: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const result = await requireContent(ctx, args.projectSlug, args.pageSlug);
+    if (!result) return null;
+
+    const draftFields = result.content?.draftFields ?? {};
+    const publishedFields = {
+      ...(result.content?.publishedFields ?? {}),
+      ...draftFields,
+    };
+    await upsertPageContent(ctx, result.project._id, result.page._id, result.content, {
+      draftFields: {},
+      publishedFields,
+      publishedAt: Date.now(),
+    });
+
+    const collectionItems = await ctx.db
+      .query("collectionItems")
+      .withIndex("by_projectId", (q) => q.eq("projectId", result.project._id))
+      .take(500);
+    const now = Date.now();
+    for (const item of collectionItems) {
+      if (item.draftData === undefined) continue;
+      await ctx.db.patch(item._id, {
+        publishedData: mergeDraftOverPublished(item.publishedData, item.draftData),
+        draftData: undefined,
+        draftUpdatedAt: undefined,
+        publishedAt: now,
+        updatedAt: now,
+      });
+    }
+
+    return null;
+  },
+});
+
+export const discardSiteDrafts = mutation({
+  args: {
+    projectSlug: v.string(),
+    pageSlug: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const result = await requireContent(ctx, args.projectSlug, args.pageSlug);
+    if (!result) return null;
+
+    await upsertPageContent(ctx, result.project._id, result.page._id, result.content, {
+      draftFields: {},
+    });
+
+    const collectionItems = await ctx.db
+      .query("collectionItems")
+      .withIndex("by_projectId", (q) => q.eq("projectId", result.project._id))
+      .take(500);
+    const now = Date.now();
+    for (const item of collectionItems) {
+      if (item.draftData === undefined) continue;
+      await ctx.db.patch(item._id, {
+        draftData: undefined,
+        draftUpdatedAt: undefined,
+        updatedAt: now,
+      });
+    }
+
+    return null;
   },
 });
 

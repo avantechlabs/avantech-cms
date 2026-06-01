@@ -90,6 +90,7 @@ function Cms() {
     previewFields,
     publishedFields,
     draftFieldIds,
+    siteDraftCount,
     previewOrigin,
     siteUrl,
     ensureSeedData,
@@ -126,7 +127,7 @@ function Cms() {
   const toastTimer = useRef(null);
   const hintTimer = useRef(null);
 
-  const changeCount = draftFieldIds.length;
+  const changeCount = siteDraftCount;
   const draftSignature = draftFieldIds.slice().sort().join("|");
   const selectedCollectionKey = selectedRecord?.collectionKey ?? null;
   const previewCollectionItems = useQuery(

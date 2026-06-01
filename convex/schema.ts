@@ -36,6 +36,7 @@ export default defineSchema({
     draftUpdatedAt: v.optional(v.number()),
     updatedAt: v.number(),
   })
+    .index("by_projectId", ["projectId"])
     .index("by_projectId_and_collectionKey", ["projectId", "collectionKey"])
     .index("by_projectId_and_collectionKey_and_slug", [
       "projectId",

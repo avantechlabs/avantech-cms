@@ -577,3 +577,128 @@ test("collection item drafts save by nested path and preview over published data
     },
   ]);
 });
+
+test("site-wide publish promotes page and collection drafts together", async () => {
+  const t = convexTest(schema, modules);
+  await t.mutation(api.cms.ensureSeedData);
+  await t.mutation(api.cms.seedDiscoveredFields, {
+    projectSlug,
+    pageSlug,
+    fields: [{ id: "hero.title", value: "Published page title" }],
+  });
+  await t.mutation(api.cms.seedPublishedCollectionItems, {
+    projectSlug,
+    collectionKey: "projects",
+    items: [
+      {
+        slug: "brand-refresh",
+        data: { card: { title: "Published record title" } },
+      },
+    ],
+  });
+
+  await t.mutation(api.cms.saveDraft, {
+    projectSlug,
+    pageSlug,
+    fields: { "hero.title": "Draft page title" },
+  });
+  await t.mutation(api.cms.saveCollectionItemDraft, {
+    projectSlug,
+    collectionKey: "projects",
+    slug: "brand-refresh",
+    path: "card.title",
+    value: "Draft record title",
+  });
+
+  const draftState = await t.query(api.cms.getSiteDraftState, {
+    projectSlug,
+    pageSlug,
+  });
+  await t.mutation(api.cms.publishSite, { projectSlug, pageSlug });
+  const pageAfterPublish = await t.query(api.cms.getPage, { projectSlug, pageSlug });
+  const publicFields = await t.query(api.cms.getPublishedContent, {
+    projectSlug,
+    pageSlug,
+  });
+  const publicRecords = await t.query(api.cms.listPublishedCollectionItems, {
+    projectSlug,
+    collectionKey: "projects",
+  });
+  const draftStateAfterPublish = await t.query(api.cms.getSiteDraftState, {
+    projectSlug,
+    pageSlug,
+  });
+
+  expect(draftState).toEqual({
+    pageDraftFieldIds: ["hero.title"],
+    collectionDraftCount: 1,
+    totalDraftCount: 2,
+  });
+  expect(pageAfterPublish?.draftFields).toEqual({});
+  expect(publicFields["hero.title"]).toBe("Draft page title");
+  expect(publicRecords).toEqual([
+    {
+      slug: "brand-refresh",
+      data: { card: { title: "Draft record title" } },
+    },
+  ]);
+  expect(draftStateAfterPublish.totalDraftCount).toBe(0);
+});
+
+test("site-wide discard clears page and collection drafts without changing published data", async () => {
+  const t = convexTest(schema, modules);
+  await t.mutation(api.cms.ensureSeedData);
+  await t.mutation(api.cms.seedDiscoveredFields, {
+    projectSlug,
+    pageSlug,
+    fields: [{ id: "hero.title", value: "Published page title" }],
+  });
+  await t.mutation(api.cms.seedPublishedCollectionItems, {
+    projectSlug,
+    collectionKey: "projects",
+    items: [
+      {
+        slug: "brand-refresh",
+        data: { card: { title: "Published record title" } },
+      },
+    ],
+  });
+
+  await t.mutation(api.cms.saveDraft, {
+    projectSlug,
+    pageSlug,
+    fields: { "hero.title": "Discarded page title" },
+  });
+  await t.mutation(api.cms.saveCollectionItemDraft, {
+    projectSlug,
+    collectionKey: "projects",
+    slug: "brand-refresh",
+    path: "card.title",
+    value: "Discarded record title",
+  });
+
+  await t.mutation(api.cms.discardSiteDrafts, { projectSlug, pageSlug });
+  const pageAfterDiscard = await t.query(api.cms.getPage, { projectSlug, pageSlug });
+  const publicFields = await t.query(api.cms.getPublishedContent, {
+    projectSlug,
+    pageSlug,
+  });
+  const previewRecords = await t.query(api.cms.listPreviewCollectionItems, {
+    projectSlug,
+    collectionKey: "projects",
+  });
+  const draftState = await t.query(api.cms.getSiteDraftState, {
+    projectSlug,
+    pageSlug,
+  });
+
+  expect(pageAfterDiscard?.draftFields).toEqual({});
+  expect(publicFields["hero.title"]).toBe("Published page title");
+  expect(previewRecords).toEqual([
+    {
+      slug: "brand-refresh",
+      data: { card: { title: "Published record title" } },
+    },
+  ]);
+  expect(draftState.totalDraftCount).toBe(0);
+});
