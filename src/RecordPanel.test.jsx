@@ -111,6 +111,8 @@ test("renders scalar controls from field definitions", () => {
           { path: "date", label: "Date", type: "date" },
           { path: "publishedAt", label: "Published at", type: "datetime" },
           { path: "accent", label: "Accent", type: "color" },
+          { path: "cover", label: "Cover", type: "image" },
+          { path: "brief", label: "Brief", type: "file" },
           { path: "unknown", label: "Unknown", type: "relationship" },
         ],
       }}
@@ -125,6 +127,8 @@ test("renders scalar controls from field definitions", () => {
         date: "2026-06-01",
         publishedAt: "2026-06-01T10:00",
         accent: "#fdb714",
+        cover: "/cover.jpg",
+        brief: "/brief.pdf",
       }}
       onFieldChange={() => {}}
       onClose={() => {}}
@@ -140,6 +144,9 @@ test("renders scalar controls from field definitions", () => {
   expect(html).toContain('type="date"');
   expect(html).toContain('type="datetime-local"');
   expect(html).toContain('type="color"');
+  expect(html).toContain('accept="image/*"');
+  expect(html).toContain("/cover.jpg");
+  expect(html).toContain("/brief.pdf");
   expect(html).toContain("Unsupported field type: relationship");
 });
 

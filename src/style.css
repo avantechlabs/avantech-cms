@@ -535,6 +535,17 @@ html[data-mode="view"] .bottomBar {
   font-size: 13px;
   padding: 10px 11px;
 }
+.recordMediaPreview {
+  width: 100%;
+  max-height: 180px;
+  object-fit: cover;
+  border-radius: var(--r-md);
+  border: 1px solid var(--line);
+}
+.recordFileValue {
+  color: var(--text-2);
+  overflow-wrap: anywhere;
+}
 .recordNestedGroup,
 .recordListField,
 .recordListItem {

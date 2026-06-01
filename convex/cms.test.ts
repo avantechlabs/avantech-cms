@@ -763,3 +763,65 @@ test("draft-only collection records preview, publish, and discard through site l
     { slug: "new-project", data: { card: { title: "New project" } } },
   ]);
 });
+
+test("collection media references resolve in preview and publish through site lifecycle", async () => {
+  const t = convexTest(schema, modules);
+  await t.mutation(api.cms.ensureSeedData);
+
+  const publishedStorageId = await storeImage(t, "published collection image");
+  const draftStorageId = await storeImage(t, "draft collection image");
+  const publishedCanonicalValue = `convex-storage:${publishedStorageId}`;
+  const draftCanonicalValue = `convex-storage:${draftStorageId}`;
+
+  await t.mutation(api.cms.seedPublishedCollectionItems, {
+    projectSlug,
+    collectionKey: "projects",
+    items: [
+      {
+        slug: "brand-refresh",
+        data: { media: { cover: publishedCanonicalValue } },
+      },
+    ],
+  });
+
+  const uploadUrl = await t.mutation(api.cms.generateCollectionFileUploadUrl, {
+    projectSlug,
+    collectionKey: "projects",
+    slug: "brand-refresh",
+    path: "media.cover",
+  });
+  await t.mutation(api.cms.saveCollectionItemDraft, {
+    projectSlug,
+    collectionKey: "projects",
+    slug: "brand-refresh",
+    path: "media.cover",
+    value: draftCanonicalValue,
+  });
+
+  const publicBeforePublish = await t.query(api.cms.listPublishedCollectionItems, {
+    projectSlug,
+    collectionKey: "projects",
+  });
+  const previewBeforePublish = await t.query(api.cms.listPreviewCollectionItems, {
+    projectSlug,
+    collectionKey: "projects",
+  });
+  await t.mutation(api.cms.publishSite, { projectSlug, pageSlug });
+  const publicAfterPublish = await t.query(api.cms.listPublishedCollectionItems, {
+    projectSlug,
+    collectionKey: "projects",
+  });
+  const publishedUrl = await t.run(async (ctx) => ctx.storage.getUrl(publishedStorageId));
+  const draftUrl = await t.run(async (ctx) => ctx.storage.getUrl(draftStorageId));
+
+  expect(uploadUrl).toMatch(/^https:\/\/some-deployment\.convex\.cloud\/api\/storage\/upload\?token=/);
+  expect(publicBeforePublish).toEqual([
+    { slug: "brand-refresh", data: { media: { cover: publishedUrl } } },
+  ]);
+  expect(previewBeforePublish).toEqual([
+    { slug: "brand-refresh", data: { media: { cover: draftUrl } } },
+  ]);
+  expect(publicAfterPublish).toEqual([
+    { slug: "brand-refresh", data: { media: { cover: draftUrl } } },
+  ]);
+});

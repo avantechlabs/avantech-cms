@@ -175,6 +175,27 @@ async function resolveStorageFieldMap(
   return resolvedFields;
 }
 
+async function resolveStorageInValue(
+  ctx: QueryCtx,
+  value: unknown,
+  cache = new Map<string, string | null>(),
+): Promise<unknown> {
+  if (typeof value === "string") return await resolveStorageFieldValue(ctx, value, cache);
+  if (Array.isArray(value)) {
+    return await Promise.all(value.map((item) => resolveStorageInValue(ctx, item, cache)));
+  }
+  if (isRecord(value)) {
+    const entries = await Promise.all(
+      Object.entries(value).map(async ([key, nested]) => [
+        key,
+        await resolveStorageInValue(ctx, nested, cache),
+      ]),
+    );
+    return Object.fromEntries(entries);
+  }
+  return value;
+}
+
 async function requireContent(
   ctx: QueryCtx | MutationCtx,
   projectSlug: string,
@@ -397,12 +418,20 @@ export const listPublishedCollectionItems = query({
       )
       .take(200);
 
-    return items
+    const storageUrlCache = new Map<string, string | null>();
+    const publishedItems = items
       .filter((item) => item.publishedData !== undefined)
       .map((item) => ({
         slug: item.slug,
         data: item.publishedData,
       }));
+
+    return await Promise.all(
+      publishedItems.map(async (item) => ({
+        slug: item.slug,
+        data: await resolveStorageInValue(ctx, item.data, storageUrlCache),
+      })),
+    );
   },
 });
 
@@ -442,6 +471,29 @@ export const createCollectionItemDraft = mutation({
     }
 
     return { slug: args.slug, data: args.data };
+  },
+});
+
+export const generateCollectionFileUploadUrl = mutation({
+  args: {
+    projectSlug: v.string(),
+    collectionKey: v.string(),
+    slug: v.string(),
+    path: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const project = await getProject(ctx, args.projectSlug);
+    if (!project) return null;
+
+    const item = await getCollectionItem(
+      ctx,
+      project._id,
+      args.collectionKey,
+      args.slug,
+    );
+    if (!item) return null;
+
+    return await ctx.storage.generateUploadUrl();
   },
 });
 
@@ -495,10 +547,17 @@ export const listPreviewCollectionItems = query({
       )
       .take(200);
 
-    return items.map((item) => ({
-      slug: item.slug,
-      data: mergeDraftOverPublished(item.publishedData, item.draftData),
-    }));
+    const storageUrlCache = new Map<string, string | null>();
+    return await Promise.all(
+      items.map(async (item) => ({
+        slug: item.slug,
+        data: await resolveStorageInValue(
+          ctx,
+          mergeDraftOverPublished(item.publishedData, item.draftData),
+          storageUrlCache,
+        ),
+      })),
+    );
   },
 });
 

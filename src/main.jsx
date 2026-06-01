@@ -143,6 +143,7 @@ function Cms() {
   ) ?? [];
   const saveCollectionItemDraft = useMutation(api.cms.saveCollectionItemDraft);
   const createCollectionItemDraft = useMutation(api.cms.createCollectionItemDraft);
+  const generateCollectionFileUploadUrl = useMutation(api.cms.generateCollectionFileUploadUrl);
 
   const { iframeRef, send } = useIframeMessaging({
     previewOrigin,
@@ -581,13 +582,35 @@ function Cms() {
           collection={selectedRecordCollection}
           record={selectedRecord}
           recordData={selectedRecordData}
-          onFieldChange={(path, value) => {
+          onFieldChange={async (path, value) => {
+            let draftValue = value;
+            if (typeof File !== "undefined" && value instanceof File) {
+              const uploadUrl = await generateCollectionFileUploadUrl({
+                projectSlug,
+                collectionKey: selectedRecord.collectionKey,
+                slug: selectedRecord.itemSlug,
+                path,
+              });
+              if (!uploadUrl) throw new Error("Unable to create file upload URL.");
+
+              const response = await fetch(uploadUrl, {
+                method: "POST",
+                headers: { "Content-Type": value.type || "application/octet-stream" },
+                body: value,
+              });
+              if (!response.ok) throw new Error(`File upload failed with status ${response.status}.`);
+
+              const { storageId } = await response.json();
+              if (!storageId) throw new Error("File upload did not return a storage ID.");
+              draftValue = `convex-storage:${storageId}`;
+            }
+
             saveCollectionItemDraft({
               projectSlug,
               collectionKey: selectedRecord.collectionKey,
               slug: selectedRecord.itemSlug,
               path,
-              value,
+              value: draftValue,
             }).then(() => showToast("Saved"));
           }}
           onClose={() => setSelectedRecord(null)}

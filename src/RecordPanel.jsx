@@ -144,6 +144,25 @@ function FieldControl({ field, value, onChange }) {
     );
   }
 
+  if (type === "image" || type === "file") {
+    return (
+      <div className="recordField">
+        <span>{label}</span>
+        {type === "image" && stringValue ? <img className="recordMediaPreview" src={stringValue} alt="" /> : null}
+        {type === "file" && stringValue ? <span className="recordFileValue">{stringValue}</span> : null}
+        <input
+          type="file"
+          accept={type === "image" ? "image/*" : undefined}
+          onChange={(event) => {
+            const file = event.target.files?.[0];
+            if (file) onChange(field, file);
+            event.target.value = "";
+          }}
+        />
+      </div>
+    );
+  }
+
   if (type === "number") {
     return (
       <label className="recordField" htmlFor={id}>
