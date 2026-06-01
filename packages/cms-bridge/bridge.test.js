@@ -196,6 +196,31 @@ test("standalone page fields outside records remain inline editable", () => {
   });
 });
 
+test("bridge marks rendered records with unpublished drafts", () => {
+  document.body.innerHTML = `
+    <article data-cms-record="projects:brand-refresh">Brand refresh</article>
+    <article data-cms-record="projects:launch-film">Launch film</article>
+  `;
+  installBridge();
+
+  window.dispatchEvent(
+    new MessageEvent("message", {
+      origin: parentOrigin,
+      data: {
+        type: "cms:set-draft-records",
+        records: [{ collectionKey: "projects", slug: "brand-refresh" }],
+      },
+    }),
+  );
+
+  expect(document.querySelector('[data-cms-record="projects:brand-refresh"]').classList).toContain(
+    "cms-draft-record",
+  );
+  expect(document.querySelector('[data-cms-record="projects:launch-film"]').classList).not.toContain(
+    "cms-draft-record",
+  );
+});
+
 test("bridge applies image field values to src and text field values to textContent", () => {
   document.body.innerHTML = `
     <img data-cms-field="hero.image" src="/images/static-hero.jpg" alt="">

@@ -631,6 +631,7 @@ test("site-wide publish promotes page and collection drafts together", async () 
 
   expect(draftState).toEqual({
     pageDraftFieldIds: ["hero.title"],
+    collectionDrafts: [{ collectionKey: "projects", slug: "brand-refresh" }],
     collectionDraftCount: 1,
     totalDraftCount: 2,
   });
@@ -751,6 +752,9 @@ test("draft-only collection records preview, publish, and discard through site l
   ]);
   expect(publicBeforePublish).toEqual([]);
   expect(draftState.collectionDraftCount).toBe(1);
+  expect(draftState.collectionDrafts).toEqual([
+    { collectionKey: "projects", slug: "new-project" },
+  ]);
   expect(publicAfterPublish).toEqual([
     { slug: "new-project", data: { card: { title: "New project" } } },
   ]);

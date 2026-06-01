@@ -12,7 +12,8 @@ export type CmsToSiteMessage =
   | { type: "cms:enter-field"; fieldId: string }
   | { type: "cms:set-mode"; mode: "view" | "edit" }
   | { type: "cms:set-theme"; theme: "light" | "dark"; tokens: ThemeTokens }
-  | { type: "cms:set-drafts"; fieldIds: string[] };
+  | { type: "cms:set-drafts"; fieldIds: string[] }
+  | { type: "cms:set-draft-records"; records: { collectionKey: string; slug: string }[] };
 
 export type FieldData = {
   id: string;

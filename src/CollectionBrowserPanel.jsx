@@ -1,7 +1,15 @@
 import React, { useState } from "react";
 
-export function CollectionBrowserPanel({ collection, records = [], onCreate, onSelectRecord, onClose }) {
+export function CollectionBrowserPanel({
+  collection,
+  records = [],
+  draftSlugs = [],
+  onCreate,
+  onSelectRecord,
+  onClose,
+}) {
   const [slug, setSlug] = useState("");
+  const draftSlugSet = new Set(draftSlugs);
   if (!collection) return null;
 
   function submit(event) {
@@ -37,6 +45,7 @@ export function CollectionBrowserPanel({ collection, records = [], onCreate, onS
                 type="button"
               >
                 <span>{record.slug}</span>
+                {draftSlugSet.has(record.slug) && <span className="draftDot" />}
               </button>
             ))
           ) : (

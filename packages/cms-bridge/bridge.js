@@ -63,6 +63,11 @@
       background-color: var(--cms-draft-tint);
       outline-color: color-mix(in srgb, var(--cms-draft) 45%, transparent);
     }
+    body.cms-edit [data-cms-record].cms-draft-record {
+      outline: 2px solid color-mix(in srgb, var(--cms-draft) 65%, transparent);
+      outline-offset: 8px;
+      background-color: var(--cms-draft-tint);
+    }
     body.cms-edit [data-cms-field].cms-leaf.cms-hover {
       outline-color: var(--cms-gold);
       background-color: color-mix(in srgb, var(--cms-gold) 7%, transparent);
@@ -372,6 +377,15 @@
         const drafts = new Set(message.fieldIds || []);
         for (const el of leafFields()) {
           el.classList.toggle("cms-draft", drafts.has(el.dataset.cmsField));
+        }
+        break;
+      }
+      case "cms:set-draft-records": {
+        const drafts = new Set(
+          (message.records || []).map((record) => `${record.collectionKey}:${record.slug}`),
+        );
+        for (const el of document.querySelectorAll(RECORD_SELECTOR)) {
+          el.classList.toggle("cms-draft-record", drafts.has(el.dataset.cmsRecord));
         }
         break;
       }

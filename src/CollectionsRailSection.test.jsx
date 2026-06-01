@@ -21,3 +21,17 @@ test("renders collection rows with owner-facing labels and counts", () => {
   expect(html).toContain("4");
   expect(html).not.toContain("No collections yet");
 });
+
+test("marks collections with unpublished drafts", () => {
+  const html = renderToStaticMarkup(
+    <CollectionsRailSection
+      collections={[
+        { key: "projects", label: "Projects", recordCount: 2 },
+        { key: "team", label: "Team", recordCount: 4 },
+      ]}
+      draftCollectionKeys={["projects"]}
+    />,
+  );
+
+  expect(html).toContain("draftDot");
+});

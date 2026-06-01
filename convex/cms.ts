@@ -512,6 +512,7 @@ export const getSiteDraftState = query({
     if (!result) {
       return {
         pageDraftFieldIds: [],
+        collectionDrafts: [],
         collectionDraftCount: 0,
         totalDraftCount: 0,
       };
@@ -527,12 +528,21 @@ export const getSiteDraftState = query({
       .query("collectionItems")
       .withIndex("by_projectId", (q) => q.eq("projectId", result.project._id))
       .take(500);
-    const collectionDraftCount = collectionItems.filter(hasMeaningfulCollectionDraft).length;
+    const collectionDrafts = collectionItems
+      .filter(hasMeaningfulCollectionDraft)
+      .map((item) => ({
+        collectionKey: item.collectionKey,
+        slug: item.slug,
+      }))
+      .sort((a, b) =>
+        `${a.collectionKey}:${a.slug}`.localeCompare(`${b.collectionKey}:${b.slug}`),
+      );
 
     return {
       pageDraftFieldIds,
-      collectionDraftCount,
-      totalDraftCount: pageDraftFieldIds.length + collectionDraftCount,
+      collectionDrafts,
+      collectionDraftCount: collectionDrafts.length,
+      totalDraftCount: pageDraftFieldIds.length + collectionDrafts.length,
     };
   },
 });

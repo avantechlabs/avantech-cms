@@ -28,6 +28,22 @@ test("renders collection records and a create form", () => {
   expect(html).toContain("Create");
 });
 
+test("marks records with unpublished drafts", () => {
+  const html = renderToStaticMarkup(
+    <CollectionBrowserPanel
+      collection={{ key: "projects", label: "Projects" }}
+      records={[{ slug: "brand-refresh", data: {} }]}
+      draftSlugs={["brand-refresh"]}
+      onCreate={() => {}}
+      onSelectRecord={() => {}}
+      onClose={() => {}}
+    />,
+  );
+
+  expect(html).toContain("draftDot");
+});
+
+
 test("creates a draft record from the entered slug", () => {
   const onCreate = vi.fn();
   document.body.innerHTML = `<div id="root"></div>`;

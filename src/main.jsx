@@ -92,6 +92,7 @@ function Cms() {
     publishedFields,
     draftFieldIds,
     siteDraftCount,
+    collectionDrafts,
     previewOrigin,
     siteUrl,
     ensureSeedData,
@@ -131,6 +132,10 @@ function Cms() {
 
   const changeCount = siteDraftCount;
   const draftSignature = draftFieldIds.slice().sort().join("|");
+  const collectionDraftSignature = collectionDrafts
+    .map((draft) => `${draft.collectionKey}:${draft.slug}`)
+    .sort()
+    .join("|");
   const activeCollectionKey = selectedRecord?.collectionKey ?? selectedCollectionKey;
   const previewCollectionItems = useQuery(
     api.cms.listPreviewCollectionItems,
@@ -200,6 +205,10 @@ function Cms() {
   useEffect(() => {
     send({ type: "cms:set-drafts", fieldIds: draftFieldIds });
   }, [draftSignature, send]);
+
+  useEffect(() => {
+    send({ type: "cms:set-draft-records", records: collectionDrafts });
+  }, [collectionDraftSignature, send]);
 
   useEffect(() => {
     ensureSeedData();
@@ -460,6 +469,7 @@ function Cms() {
 
         <CollectionsRailSection
           collections={collections}
+          draftCollectionKeys={[...new Set(collectionDrafts.map((draft) => draft.collectionKey))]}
           onSelectCollection={(collectionKey) => {
             setRailOpen(false);
             setSelectedField(null);
@@ -588,6 +598,9 @@ function Cms() {
         <CollectionBrowserPanel
           collection={selectedCollection}
           records={previewCollectionItems}
+          draftSlugs={collectionDrafts
+            .filter((draft) => draft.collectionKey === selectedCollection.key)
+            .map((draft) => draft.slug)}
           onCreate={(slug) => {
             const data = selectedCollection.defaultItem ?? {};
             createCollectionItemDraft({

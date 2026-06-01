@@ -50,6 +50,7 @@ export function useCmsProject(projectSlug: string) {
     previewFields,
     draftFieldIds,
     siteDraftCount: siteDraftState?.totalDraftCount ?? draftFieldIds.length,
+    collectionDrafts: siteDraftState?.collectionDrafts ?? [],
     previewOrigin,
     siteUrl,
     ensureSeedData,

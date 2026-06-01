@@ -4,7 +4,9 @@ function collectionCount(collection) {
   return Number.isFinite(collection.recordCount) ? collection.recordCount : 0;
 }
 
-export function CollectionsRailSection({ collections = [], onSelectCollection }) {
+export function CollectionsRailSection({ collections = [], draftCollectionKeys = [], onSelectCollection }) {
+  const draftCollections = new Set(draftCollectionKeys);
+
   return (
     <div className="railGroup">
       <div className="railLabel">Collections</div>
@@ -17,6 +19,7 @@ export function CollectionsRailSection({ collections = [], onSelectCollection })
             type="button"
           >
             <span>{collection.label}</span>
+            {draftCollections.has(collection.key) && <span className="draftDot" />}
             <span className="count">{collectionCount(collection)}</span>
           </button>
         ))
