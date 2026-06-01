@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { ConvexProvider, ConvexReactClient } from "convex/react";
+import { CollectionsRailSection } from "./CollectionsRailSection.jsx";
 import { useCmsProject } from "./hooks/useCmsProject.js";
 import { useFieldManager } from "./hooks/useFieldManager.js";
 import { useIframeMessaging } from "./hooks/useIframeMessaging.js";
@@ -108,6 +109,7 @@ function Cms() {
   const [railOpen, setRailOpen] = useState(false);
   const [toast, setToast] = useState("");
   const [hint, setHint] = useState(false);
+  const [collections, setCollections] = useState([]);
   const [selectedField, setSelectedField] = useState(null);
   const [pendingPreview, setPendingPreview] = useState(null); // { fieldId, url }
   const [isUploading, setIsUploading] = useState(false);
@@ -157,6 +159,7 @@ function Cms() {
         });
       }
     },
+    onCollections: setCollections,
     onFieldChanged: (fieldId, value) => {
       saveDraftField(fieldId, value);
       showToast("Saved");
@@ -186,6 +189,7 @@ function Cms() {
 
   useEffect(() => {
     resetForProject();
+    setCollections([]);
     setSelectedField(null);
   }, [projectSlug]);
 
@@ -425,10 +429,7 @@ function Cms() {
           </div>
         </div>
 
-        <div className="railGroup">
-          <div className="railLabel">Collections</div>
-          <div className="railRow muted">No collections yet</div>
-        </div>
+        <CollectionsRailSection collections={collections} />
 
         <div className="railGroup">
           <div className="railLabel">Media</div>

@@ -3,6 +3,7 @@ import { useQuery } from "convex/react";
 
 const FIELD_SELECTOR = "[data-cms-field]";
 const PUBLISHED_CONTENT_QUERY = "cms:getPublishedContent";
+const COLLECTIONS_REGISTRY = "__AVANTECH_CMS_COLLECTIONS__";
 const CmsContentContext = createContext(null);
 
 function isEditMode() {
@@ -104,6 +105,34 @@ export function CmsContentProvider({
       {children}
     </CmsContentContext.Provider>
   );
+}
+
+function toSerializableCollections(collections) {
+  return JSON.parse(JSON.stringify(collections ?? []));
+}
+
+export function CmsCollectionsProvider({ collections = [], children }) {
+  const serializableCollections = useMemo(
+    () => toSerializableCollections(collections),
+    [collections],
+  );
+
+  useEffect(() => {
+    window[COLLECTIONS_REGISTRY] = serializableCollections;
+    window.dispatchEvent(
+      new CustomEvent("cms:collections-changed", {
+        detail: serializableCollections,
+      }),
+    );
+
+    return () => {
+      if (window[COLLECTIONS_REGISTRY] === serializableCollections) {
+        delete window[COLLECTIONS_REGISTRY];
+      }
+    };
+  }, [serializableCollections]);
+
+  return children;
 }
 
 export function CmsText({ fieldId, children }) {

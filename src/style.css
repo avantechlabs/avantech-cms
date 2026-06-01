@@ -511,10 +511,15 @@ html[data-mode="view"] .railTab { opacity: 0; pointer-events: none; }
   display: flex;
   align-items: center;
   gap: var(--s-2);
+  width: 100%;
   padding: 9px var(--s-3);
+  border: 0;
+  background: transparent;
   border-radius: var(--r-md);
+  font: inherit;
   font-size: 14px;
   color: var(--text-2);
+  text-align: left;
   cursor: pointer;
   transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
 }

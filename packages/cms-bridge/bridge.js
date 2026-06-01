@@ -6,6 +6,7 @@
   if (!parentOrigin) return;
 
   const FIELD_SELECTOR = "[data-cms-field]";
+  const COLLECTIONS_REGISTRY = "__AVANTECH_CMS_COLLECTIONS__";
   const scheduleFrame = window.requestAnimationFrame || ((callback) => setTimeout(callback, 0));
 
   let scheduled = false;
@@ -144,6 +145,13 @@
   }
   function send(message) {
     parent.postMessage(message, parentOrigin);
+  }
+  function registeredCollections() {
+    const collections = window[COLLECTIONS_REGISTRY];
+    return Array.isArray(collections) ? collections : [];
+  }
+  function sendCollections(collections = registeredCollections()) {
+    send({ type: "cms:collections", collections });
   }
   function sendFields() {
     scheduled = false;
@@ -336,6 +344,10 @@
     }
   });
 
+  window.addEventListener("cms:collections-changed", (event) => {
+    sendCollections(event.detail);
+  });
+
   // Re-report field geometry on layout changes, but never while the owner is typing.
   new MutationObserver(() => {
     if (activeEl) return;
@@ -351,6 +363,7 @@
   function boot() {
     mountChrome();
     send({ type: "cms:ready" });
+    sendCollections();
     scheduleFields();
   }
   if (document.readyState === "loading") {

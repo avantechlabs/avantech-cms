@@ -22,10 +22,22 @@ export type FieldData = {
   rect: { left: number; top: number; width: number; height: number };
 };
 
+export type CollectionDefinition = {
+  key: string;
+  label: string;
+  recordCount?: number;
+  titlePath?: string;
+  slugPath?: string;
+  defaultItem?: unknown;
+  groups?: unknown[];
+  fields?: unknown[];
+};
+
 // site (iframe / bridge.js) -> parent (CMS)
 export type SiteToCmsMessage =
   | { type: "cms:ready" }
   | { type: "cms:fields"; fields: FieldData[] }
+  | { type: "cms:collections"; collections: CollectionDefinition[] }
   | { type: "cms:field-clicked"; fieldId: string; kind?: FieldData["kind"] }
   | { type: "cms:field-changed"; fieldId: string; value: string }
   | { type: "cms:editing"; fieldId: string | null };

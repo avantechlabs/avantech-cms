@@ -1,7 +1,11 @@
 // @vitest-environment jsdom
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import React from "react";
+import { act } from "react";
+import { createRoot } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
-import { beforeEach, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
 const queryState = vi.hoisted(() => ({ result: undefined }));
 
@@ -9,7 +13,11 @@ vi.mock("convex/react", () => ({
   useQuery: () => queryState.result,
 }));
 
-import { CmsContentProvider, CmsImage } from "./useCmsPage.jsx";
+import { CmsCollectionsProvider, CmsContentProvider, CmsImage } from "./useCmsPage.jsx";
+
+const parentOrigin = "http://cms.test";
+const bridgeSource = readFileSync(resolve("packages/cms-bridge/bridge.js"), "utf8");
+let postedMessages;
 
 function renderWithCms(children) {
   return renderToStaticMarkup(
@@ -21,7 +29,17 @@ function renderWithCms(children) {
 
 beforeEach(() => {
   queryState.result = undefined;
+  postedMessages = [];
+  document.body.innerHTML = "";
+  document.head.innerHTML = "";
   window.history.replaceState({}, "", "/");
+  vi.spyOn(window.parent, "postMessage").mockImplementation((message, origin) => {
+    postedMessages.push({ message, origin });
+  });
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
 });
 
 test("CmsImage renders the published image value in public mode", () => {
@@ -54,4 +72,47 @@ test("CmsImage keeps the fallback src available for edit-mode discovery", () => 
 
   expect(html).toContain('data-cms-field="hero.image"');
   expect(html).toContain('src="/fallback-hero.jpg"');
+});
+
+test("CmsCollectionsProvider registers serializable definitions for the bridge", async () => {
+  window.history.replaceState({}, "", `/?parent=${encodeURIComponent(parentOrigin)}`);
+  document.body.innerHTML = `<div id="root"></div>`;
+
+  await act(async () => {
+    createRoot(document.getElementById("root")).render(
+      <CmsCollectionsProvider
+        collections={[
+          {
+            key: "projects",
+            label: "Projects",
+            recordCount: 2,
+            titlePath: "card.title",
+            slugPath: "slug",
+            fields: [{ path: "card.title", label: "Card title", type: "text" }],
+          },
+        ]}
+      >
+        <main />
+      </CmsCollectionsProvider>,
+    );
+  });
+
+  window.eval(bridgeSource);
+
+  expect(postedMessages).toContainEqual({
+    origin: parentOrigin,
+    message: {
+      type: "cms:collections",
+      collections: [
+        {
+          key: "projects",
+          label: "Projects",
+          recordCount: 2,
+          titlePath: "card.title",
+          slugPath: "slug",
+          fields: [{ path: "card.title", label: "Card title", type: "text" }],
+        },
+      ],
+    },
+  });
 });
