@@ -702,3 +702,60 @@ test("site-wide discard clears page and collection drafts without changing publi
   ]);
   expect(draftState.totalDraftCount).toBe(0);
 });
+
+test("draft-only collection records preview, publish, and discard through site lifecycle", async () => {
+  const t = convexTest(schema, modules);
+  await t.mutation(api.cms.ensureSeedData);
+
+  await t.mutation(api.cms.createCollectionItemDraft, {
+    projectSlug,
+    collectionKey: "projects",
+    slug: "new-project",
+    data: { card: { title: "New project" } },
+  });
+
+  const previewBeforePublish = await t.query(api.cms.listPreviewCollectionItems, {
+    projectSlug,
+    collectionKey: "projects",
+  });
+  const publicBeforePublish = await t.query(api.cms.listPublishedCollectionItems, {
+    projectSlug,
+    collectionKey: "projects",
+  });
+  const draftState = await t.query(api.cms.getSiteDraftState, { projectSlug, pageSlug });
+
+  await t.mutation(api.cms.publishSite, { projectSlug, pageSlug });
+  const publicAfterPublish = await t.query(api.cms.listPublishedCollectionItems, {
+    projectSlug,
+    collectionKey: "projects",
+  });
+  const draftStateAfterPublish = await t.query(api.cms.getSiteDraftState, {
+    projectSlug,
+    pageSlug,
+  });
+
+  await t.mutation(api.cms.createCollectionItemDraft, {
+    projectSlug,
+    collectionKey: "projects",
+    slug: "discarded-project",
+    data: { card: { title: "Discard me" } },
+  });
+  await t.mutation(api.cms.discardSiteDrafts, { projectSlug, pageSlug });
+  const previewAfterDiscard = await t.query(api.cms.listPreviewCollectionItems, {
+    projectSlug,
+    collectionKey: "projects",
+  });
+
+  expect(previewBeforePublish).toEqual([
+    { slug: "new-project", data: { card: { title: "New project" } } },
+  ]);
+  expect(publicBeforePublish).toEqual([]);
+  expect(draftState.collectionDraftCount).toBe(1);
+  expect(publicAfterPublish).toEqual([
+    { slug: "new-project", data: { card: { title: "New project" } } },
+  ]);
+  expect(draftStateAfterPublish.totalDraftCount).toBe(0);
+  expect(previewAfterDiscard).toEqual([
+    { slug: "new-project", data: { card: { title: "New project" } } },
+  ]);
+});

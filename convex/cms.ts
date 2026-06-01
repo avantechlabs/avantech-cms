@@ -397,10 +397,51 @@ export const listPublishedCollectionItems = query({
       )
       .take(200);
 
-    return items.map((item) => ({
-      slug: item.slug,
-      data: item.publishedData,
-    }));
+    return items
+      .filter((item) => item.publishedData !== undefined)
+      .map((item) => ({
+        slug: item.slug,
+        data: item.publishedData,
+      }));
+  },
+});
+
+export const createCollectionItemDraft = mutation({
+  args: {
+    projectSlug: v.string(),
+    collectionKey: v.string(),
+    slug: v.string(),
+    data: v.any(),
+  },
+  handler: async (ctx, args) => {
+    const project = await getProject(ctx, args.projectSlug);
+    if (!project) return null;
+
+    const existing = await getCollectionItem(
+      ctx,
+      project._id,
+      args.collectionKey,
+      args.slug,
+    );
+    const now = Date.now();
+    if (existing) {
+      await ctx.db.patch(existing._id, {
+        draftData: args.data,
+        draftUpdatedAt: now,
+        updatedAt: now,
+      });
+    } else {
+      await ctx.db.insert("collectionItems", {
+        projectId: project._id,
+        collectionKey: args.collectionKey,
+        slug: args.slug,
+        draftData: args.data,
+        draftUpdatedAt: now,
+        updatedAt: now,
+      });
+    }
+
+    return { slug: args.slug, data: args.data };
   },
 });
 
@@ -556,6 +597,10 @@ export const discardSiteDrafts = mutation({
     const now = Date.now();
     for (const item of collectionItems) {
       if (item.draftData === undefined) continue;
+      if (item.publishedData === undefined) {
+        await ctx.db.delete(item._id);
+        continue;
+      }
       await ctx.db.patch(item._id, {
         draftData: undefined,
         draftUpdatedAt: undefined,

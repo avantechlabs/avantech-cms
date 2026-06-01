@@ -514,6 +514,30 @@ html[data-mode="view"] .bottomBar {
   outline: 2px solid var(--gold-ring);
   border-color: var(--gold);
 }
+.collectionRecordList {
+  display: grid;
+  gap: var(--s-2);
+}
+.collectionRecordRow {
+  display: flex;
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+  padding: 10px 11px;
+  text-align: left;
+}
+.collectionRecordRow:hover {
+  border-color: var(--line-strong);
+}
+.createRecordForm {
+  display: grid;
+  gap: var(--s-3);
+  margin-top: auto;
+}
 .recordPanelActions {
   display: flex;
   justify-content: flex-end;

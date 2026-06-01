@@ -30,7 +30,7 @@ export default defineSchema({
     projectId: v.id("projects"),
     collectionKey: v.string(),
     slug: v.string(),
-    publishedData: v.any(),
+    publishedData: v.optional(v.any()),
     draftData: v.optional(v.any()),
     publishedAt: v.optional(v.number()),
     draftUpdatedAt: v.optional(v.number()),

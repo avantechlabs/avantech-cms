@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { ConvexProvider, ConvexReactClient, useMutation, useQuery } from "convex/react";
 import { api } from "../convex/_generated/api.js";
+import { CollectionBrowserPanel } from "./CollectionBrowserPanel.jsx";
 import { CollectionsRailSection } from "./CollectionsRailSection.jsx";
 import { RecordPanel } from "./RecordPanel.jsx";
 import { useCmsProject } from "./hooks/useCmsProject.js";
@@ -113,6 +114,7 @@ function Cms() {
   const [toast, setToast] = useState("");
   const [hint, setHint] = useState(false);
   const [collections, setCollections] = useState([]);
+  const [selectedCollectionKey, setSelectedCollectionKey] = useState(null);
   const [selectedField, setSelectedField] = useState(null);
   const [selectedRecord, setSelectedRecord] = useState(null);
   const [pendingPreview, setPendingPreview] = useState(null); // { fieldId, url }
@@ -129,12 +131,13 @@ function Cms() {
 
   const changeCount = siteDraftCount;
   const draftSignature = draftFieldIds.slice().sort().join("|");
-  const selectedCollectionKey = selectedRecord?.collectionKey ?? null;
+  const activeCollectionKey = selectedRecord?.collectionKey ?? selectedCollectionKey;
   const previewCollectionItems = useQuery(
     api.cms.listPreviewCollectionItems,
-    selectedCollectionKey ? { projectSlug, collectionKey: selectedCollectionKey } : "skip",
+    activeCollectionKey ? { projectSlug, collectionKey: activeCollectionKey } : "skip",
   ) ?? [];
   const saveCollectionItemDraft = useMutation(api.cms.saveCollectionItemDraft);
+  const createCollectionItemDraft = useMutation(api.cms.createCollectionItemDraft);
 
   const { iframeRef, send } = useIframeMessaging({
     previewOrigin,
@@ -172,6 +175,7 @@ function Cms() {
     onCollections: setCollections,
     onRecordClicked: (collectionKey, itemSlug) => {
       closeImageCard();
+      setSelectedCollectionKey(null);
       setSelectedRecord({ collectionKey, itemSlug });
     },
     onFieldChanged: (fieldId, value) => {
@@ -204,6 +208,7 @@ function Cms() {
   useEffect(() => {
     resetForProject();
     setCollections([]);
+    setSelectedCollectionKey(null);
     setSelectedField(null);
     setSelectedRecord(null);
   }, [projectSlug]);
@@ -351,6 +356,9 @@ function Cms() {
   const selectedRecordCollection = selectedRecord
     ? collections.find((collection) => collection.key === selectedRecord.collectionKey)
     : null;
+  const selectedCollection = selectedCollectionKey
+    ? collections.find((collection) => collection.key === selectedCollectionKey)
+    : null;
   const selectedRecordData = selectedRecord
     ? previewCollectionItems.find((item) => item.slug === selectedRecord.itemSlug)?.data
     : null;
@@ -450,7 +458,15 @@ function Cms() {
           </div>
         </div>
 
-        <CollectionsRailSection collections={collections} />
+        <CollectionsRailSection
+          collections={collections}
+          onSelectCollection={(collectionKey) => {
+            setRailOpen(false);
+            setSelectedField(null);
+            setSelectedRecord(null);
+            setSelectedCollectionKey(collectionKey);
+          }}
+        />
 
         <div className="railGroup">
           <div className="railLabel">Media</div>
@@ -565,6 +581,31 @@ function Cms() {
             }).then(() => showToast("Saved"));
           }}
           onClose={() => setSelectedRecord(null)}
+        />
+      )}
+
+      {selectedCollection && !selectedRecord && mode === "edit" && (
+        <CollectionBrowserPanel
+          collection={selectedCollection}
+          records={previewCollectionItems}
+          onCreate={(slug) => {
+            const data = selectedCollection.defaultItem ?? {};
+            createCollectionItemDraft({
+              projectSlug,
+              collectionKey: selectedCollection.key,
+              slug,
+              data,
+            }).then(() => {
+              setSelectedRecord({ collectionKey: selectedCollection.key, itemSlug: slug });
+              setSelectedCollectionKey(null);
+              showToast("Record saved as draft");
+            });
+          }}
+          onSelectRecord={(slug) => {
+            setSelectedRecord({ collectionKey: selectedCollection.key, itemSlug: slug });
+            setSelectedCollectionKey(null);
+          }}
+          onClose={() => setSelectedCollectionKey(null)}
         />
       )}
 
