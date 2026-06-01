@@ -23,6 +23,22 @@ function getEditableField(fieldId) {
   return el;
 }
 
+function getFieldValue(cms, fieldId) {
+  if (!Object.prototype.hasOwnProperty.call(cms.fields, fieldId)) {
+    throw new Error(`Missing published CMS value for ${cms.projectSlug}/${cms.pageSlug}:${fieldId}`);
+  }
+
+  return cms.fields[fieldId];
+}
+
+function applyValueToField(el, value) {
+  if (el instanceof HTMLImageElement) {
+    el.src = value;
+  } else {
+    el.textContent = value;
+  }
+}
+
 export function useEditBridge() {
   useEffect(() => {
     const params = new URLSearchParams(location.search);
@@ -54,7 +70,7 @@ export function useCmsPage(projectSlug, pageSlug) {
 
     for (const [fieldId, value] of Object.entries(publishedFields)) {
       const el = getEditableField(fieldId);
-      if (el) el.textContent = value;
+      if (el) applyValueToField(el, value);
     }
   }, [publishedFields, projectSlug, pageSlug]);
 
@@ -95,9 +111,21 @@ export function CmsText({ fieldId, children }) {
 
   if (!cms || isEditMode() || !cms.isLoaded) return children;
 
-  if (!Object.prototype.hasOwnProperty.call(cms.fields, fieldId)) {
-    throw new Error(`Missing published CMS value for ${cms.projectSlug}/${cms.pageSlug}:${fieldId}`);
-  }
+  return getFieldValue(cms, fieldId);
+}
 
-  return cms.fields[fieldId];
+export function CmsImage({ fieldId, src, alt = "", ...props }) {
+  const cms = useContext(CmsContentContext);
+  const renderedSrc = !cms || isEditMode() || !cms.isLoaded
+    ? src
+    : getFieldValue(cms, fieldId);
+
+  return (
+    <img
+      {...props}
+      alt={alt}
+      data-cms-field={fieldId}
+      src={renderedSrc}
+    />
+  );
 }

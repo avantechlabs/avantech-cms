@@ -140,3 +140,32 @@ test("non-storage URL values pass through content reads unchanged", async () => 
   expect(publicFields).toMatchObject(urlFields);
   expect(previewFields).toMatchObject(urlFields);
 });
+
+test("image discovery seeds only missing published values without replacing drafts", async () => {
+  const t = convexTest(schema, modules);
+  await t.mutation(api.cms.ensureSeedData);
+
+  const firstSeed = await t.mutation(api.cms.seedDiscoveredFields, {
+    projectSlug,
+    pageSlug,
+    fields: [{ id: "hero.image", value: "/images/static-hero.jpg" }],
+  });
+
+  await t.mutation(api.cms.saveDraft, {
+    projectSlug,
+    pageSlug,
+    fields: { "hero.image": "/images/draft-hero.jpg" },
+  });
+
+  const secondSeed = await t.mutation(api.cms.seedDiscoveredFields, {
+    projectSlug,
+    pageSlug,
+    fields: [{ id: "hero.image", value: "/images/changed-static-hero.jpg" }],
+  });
+  const storedContent = await getStoredPageContent(t);
+
+  expect(firstSeed?.["hero.image"]).toBe("/images/static-hero.jpg");
+  expect(secondSeed?.["hero.image"]).toBe("/images/draft-hero.jpg");
+  expect(storedContent.publishedFields["hero.image"]).toBe("/images/static-hero.jpg");
+  expect(storedContent.draftFields["hero.image"]).toBe("/images/draft-hero.jpg");
+});
