@@ -22,6 +22,12 @@ const SEEDED_PROJECTS = [
 ];
 
 const fieldsValidator = v.record(v.string(), v.string());
+const collectionItemsValidator = v.array(
+  v.object({
+    slug: v.string(),
+    data: v.any(),
+  }),
+);
 const discoveredFieldsValidator = v.array(
   v.object({
     id: v.string(),
@@ -61,6 +67,20 @@ async function getContentForPage(
     .query("pageContent")
     .withIndex("by_projectId_and_pageId", (q) =>
       q.eq("projectId", projectId).eq("pageId", pageId),
+    )
+    .unique();
+}
+
+async function getCollectionItem(
+  ctx: QueryCtx | MutationCtx,
+  projectId: Id<"projects">,
+  collectionKey: string,
+  slug: string,
+): Promise<Doc<"collectionItems"> | null> {
+  return await ctx.db
+    .query("collectionItems")
+    .withIndex("by_projectId_and_collectionKey_and_slug", (q) =>
+      q.eq("projectId", projectId).eq("collectionKey", collectionKey).eq("slug", slug),
     )
     .unique();
 }
@@ -273,6 +293,71 @@ export const getPreviewContent = query({
       ...result.content.publishedFields,
       ...result.content.draftFields,
     });
+  },
+});
+
+export const seedPublishedCollectionItems = mutation({
+  args: {
+    projectSlug: v.string(),
+    collectionKey: v.string(),
+    items: collectionItemsValidator,
+  },
+  handler: async (ctx, args) => {
+    const project = await getProject(ctx, args.projectSlug);
+    if (!project) return null;
+
+    const now = Date.now();
+    const records = [];
+    for (const item of args.items) {
+      const existing = await getCollectionItem(
+        ctx,
+        project._id,
+        args.collectionKey,
+        item.slug,
+      );
+      if (existing) {
+        await ctx.db.patch(existing._id, {
+          publishedData: item.data,
+          publishedAt: now,
+          updatedAt: now,
+        });
+      } else {
+        await ctx.db.insert("collectionItems", {
+          projectId: project._id,
+          collectionKey: args.collectionKey,
+          slug: item.slug,
+          publishedData: item.data,
+          publishedAt: now,
+          updatedAt: now,
+        });
+      }
+      records.push({ slug: item.slug, data: item.data });
+    }
+
+    return records;
+  },
+});
+
+export const listPublishedCollectionItems = query({
+  args: {
+    projectSlug: v.string(),
+    collectionKey: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const project = await getProject(ctx, args.projectSlug);
+    if (!project) return [];
+
+    const items = await ctx.db
+      .query("collectionItems")
+      .withIndex("by_projectId_and_collectionKey", (q) =>
+        q.eq("projectId", project._id).eq("collectionKey", args.collectionKey),
+      )
+      .take(200);
+
+    return items.map((item) => ({
+      slug: item.slug,
+      data: item.publishedData,
+    }));
   },
 });
 

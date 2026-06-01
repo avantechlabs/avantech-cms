@@ -391,3 +391,100 @@ test("text and image drafts publish together and clear the unpublished page stat
   expect(publicFields["hero.image"]).toBe(imageUrl);
   expect(pageAfterPublish?.draftFields).toEqual({});
 });
+
+test("published collection records are listed by project and collection only", async () => {
+  const t = convexTest(schema, modules);
+  await t.mutation(api.cms.ensureSeedData);
+
+  await t.mutation(api.cms.seedPublishedCollectionItems, {
+    projectSlug: "project-a",
+    collectionKey: "projects",
+    items: [
+      {
+        slug: "brand-refresh",
+        data: {
+          card: { title: "Brand refresh", description: "A sharper launch story." },
+          stats: [{ label: "Lift", value: 38 }],
+          featured: true,
+        },
+      },
+      {
+        slug: "launch-film",
+        data: {
+          card: { title: "Launch film", description: "A campaign hero cut." },
+          featured: false,
+        },
+      },
+    ],
+  });
+  await t.mutation(api.cms.seedPublishedCollectionItems, {
+    projectSlug: "project-b",
+    collectionKey: "projects",
+    items: [
+      {
+        slug: "sable-workspace",
+        data: { card: { title: "Sable workspace" } },
+      },
+    ],
+  });
+  await t.run(async (ctx) => {
+    const project = await ctx.db
+      .query("projects")
+      .withIndex("by_slug", (q) => q.eq("slug", "project-a"))
+      .unique();
+    if (!project) throw new Error("Expected seeded project");
+
+    const item = await ctx.db
+      .query("collectionItems")
+      .withIndex("by_projectId_and_collectionKey_and_slug", (q) =>
+        q
+          .eq("projectId", project._id)
+          .eq("collectionKey", "projects")
+          .eq("slug", "brand-refresh"),
+      )
+      .unique();
+    if (!item) throw new Error("Expected seeded collection item");
+
+    await ctx.db.patch(item._id, {
+      draftData: { card: { title: "Draft brand refresh" } },
+    });
+  });
+
+  const projectARecords = await t.query(api.cms.listPublishedCollectionItems, {
+    projectSlug: "project-a",
+    collectionKey: "projects",
+  });
+  const projectBRecords = await t.query(api.cms.listPublishedCollectionItems, {
+    projectSlug: "project-b",
+    collectionKey: "projects",
+  });
+  const missingCollection = await t.query(api.cms.listPublishedCollectionItems, {
+    projectSlug: "project-a",
+    collectionKey: "team",
+  });
+
+  expect(projectARecords).toEqual([
+    {
+      slug: "brand-refresh",
+      data: {
+        card: { title: "Brand refresh", description: "A sharper launch story." },
+        stats: [{ label: "Lift", value: 38 }],
+        featured: true,
+      },
+    },
+    {
+      slug: "launch-film",
+      data: {
+        card: { title: "Launch film", description: "A campaign hero cut." },
+        featured: false,
+      },
+    },
+  ]);
+  expect(projectBRecords).toEqual([
+    {
+      slug: "sable-workspace",
+      data: { card: { title: "Sable workspace" } },
+    },
+  ]);
+  expect(missingCollection).toEqual([]);
+});

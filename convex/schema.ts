@@ -25,4 +25,21 @@ export default defineSchema({
     publishedAt: v.optional(v.number()),
     updatedAt: v.number(),
   }).index("by_projectId_and_pageId", ["projectId", "pageId"]),
+
+  collectionItems: defineTable({
+    projectId: v.id("projects"),
+    collectionKey: v.string(),
+    slug: v.string(),
+    publishedData: v.any(),
+    draftData: v.optional(v.any()),
+    publishedAt: v.optional(v.number()),
+    draftUpdatedAt: v.optional(v.number()),
+    updatedAt: v.number(),
+  })
+    .index("by_projectId_and_collectionKey", ["projectId", "collectionKey"])
+    .index("by_projectId_and_collectionKey_and_slug", [
+      "projectId",
+      "collectionKey",
+      "slug",
+    ]),
 });

@@ -7,13 +7,21 @@ import { createRoot } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
-const queryState = vi.hoisted(() => ({ result: undefined }));
+const queryState = vi.hoisted(() => ({ result: undefined, calls: [] }));
 
 vi.mock("convex/react", () => ({
-  useQuery: () => queryState.result,
+  useQuery: (query, args) => {
+    queryState.calls.push({ query, args });
+    return queryState.result;
+  },
 }));
 
-import { CmsCollectionsProvider, CmsContentProvider, CmsImage } from "./useCmsPage.jsx";
+import {
+  CmsCollectionsProvider,
+  CmsContentProvider,
+  CmsImage,
+  useCmsCollection,
+} from "./useCmsPage.jsx";
 
 const parentOrigin = "http://cms.test";
 const bridgeSource = readFileSync(resolve("packages/cms-bridge/bridge.js"), "utf8");
@@ -29,6 +37,7 @@ function renderWithCms(children) {
 
 beforeEach(() => {
   queryState.result = undefined;
+  queryState.calls = [];
   postedMessages = [];
   document.body.innerHTML = "";
   document.head.innerHTML = "";
@@ -114,5 +123,28 @@ test("CmsCollectionsProvider registers serializable definitions for the bridge",
         },
       ],
     },
+  });
+});
+
+test("useCmsCollection reads published records through a public string query", () => {
+  queryState.result = [
+    { slug: "brand-refresh", data: { card: { title: "Brand refresh" } } },
+  ];
+  let records;
+
+  function CollectionConsumer() {
+    records = useCmsCollection("project-a", "projects");
+    return <span>{records[0].data.card.title}</span>;
+  }
+
+  const html = renderToStaticMarkup(<CollectionConsumer />);
+
+  expect(html).toContain("Brand refresh");
+  expect(records).toEqual([
+    { slug: "brand-refresh", data: { card: { title: "Brand refresh" } } },
+  ]);
+  expect(queryState.calls).toContainEqual({
+    query: "cms:listPublishedCollectionItems",
+    args: { projectSlug: "project-a", collectionKey: "projects" },
   });
 });

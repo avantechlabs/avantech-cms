@@ -3,6 +3,7 @@ import { useQuery } from "convex/react";
 
 const FIELD_SELECTOR = "[data-cms-field]";
 const PUBLISHED_CONTENT_QUERY = "cms:getPublishedContent";
+const PUBLISHED_COLLECTION_QUERY = "cms:listPublishedCollectionItems";
 const COLLECTIONS_REGISTRY = "__AVANTECH_CMS_COLLECTIONS__";
 const CmsContentContext = createContext(null);
 
@@ -76,6 +77,13 @@ export function useCmsPage(projectSlug, pageSlug) {
   }, [publishedFields, projectSlug, pageSlug]);
 
   return publishedFields ?? {};
+}
+
+export function useCmsCollection(projectSlug, collectionKey) {
+  return useQuery(PUBLISHED_COLLECTION_QUERY, {
+    projectSlug,
+    collectionKey,
+  }) ?? [];
 }
 
 export function CmsContentProvider({
