@@ -35,6 +35,30 @@ function getProjectSlug() {
   return first || "project-a";
 }
 
+// Owners never see raw field ids. Build a plain, sentence-cased phrase and keep
+// the descriptive noun ("hero.image" -> "Hero image") so the label reads as a
+// thing an owner recognizes, not a codeword or a raw id.
+const FIELD_SYNONYMS = {
+  desc: "description", cta: "button", subtitle: "subtitle", lede: "intro",
+  eyebrow: "label", copy: "text", nav: "nav", brand: "brand", hero: "hero",
+  stats: "stat", features: "feature", steps: "step", testimonial: "quote",
+};
+
+function imageFieldTitle(fieldId) {
+  const phrase = fieldId
+    .split(".")
+    .map((seg) => {
+      if (/^\d+$/.test(seg)) return String(Number(seg) + 1);
+      if (FIELD_SYNONYMS[seg]) return FIELD_SYNONYMS[seg];
+      return seg.replace(/([a-z0-9])([A-Z])/g, "$1 $2");
+    })
+    .join(" ")
+    .toLowerCase();
+  return phrase.charAt(0).toUpperCase() + phrase.slice(1);
+}
+
+const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
+
 // Create the Convex client once at module load, not per render.
 const convexClient = convexUrl ? new ConvexReactClient(convexUrl) : null;
 
@@ -85,8 +109,15 @@ function Cms() {
   const [toast, setToast] = useState("");
   const [hint, setHint] = useState(false);
   const [selectedField, setSelectedField] = useState(null);
+  const [pendingPreview, setPendingPreview] = useState(null); // { fieldId, url }
+  const [isUploading, setIsUploading] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
+  const [imageError, setImageError] = useState(null);
   const fieldsByIdRef = useRef(new Map());
   const imageInputRef = useRef(null);
+  const imageCardRef = useRef(null);
+  const pendingUrlRef = useRef(null); // latest object URL, for cleanup
+  const uploadSeqRef = useRef(0); // ignore a superseded upload's UI effects
   const toastTimer = useRef(null);
   const hintTimer = useRef(null);
 
@@ -212,6 +243,13 @@ function Cms() {
     });
   }
 
+  function revokePendingUrl() {
+    if (pendingUrlRef.current) {
+      URL.revokeObjectURL(pendingUrlRef.current);
+      pendingUrlRef.current = null;
+    }
+  }
+
   function onChooseImage() {
     imageInputRef.current?.click();
   }
@@ -219,28 +257,113 @@ function Cms() {
   function onImageFileChange(event) {
     const file = event.target.files?.[0];
     event.target.value = "";
-    if (!file || selectedField?.kind !== "image") return;
+    if (file) handleImageFile(file);
+  }
 
-    const fieldId = selectedField.id;
+  function handleImageFile(file) {
+    const field = selectedField?.kind === "image" ? selectedField : null;
+    if (!field) return;
+
+    setImageError(null);
+    if (!file.type.startsWith("image/")) {
+      setImageError("That file isn’t an image.");
+      return;
+    }
+    if (file.size > MAX_IMAGE_BYTES) {
+      setImageError("That image is over 10 MB — try a smaller one.");
+      return;
+    }
+
+    const fieldId = field.id;
+    const seq = ++uploadSeqRef.current;
+    revokePendingUrl();
     const previewUrl = URL.createObjectURL(file);
+    pendingUrlRef.current = previewUrl;
+    setPendingPreview({ fieldId, url: previewUrl });
+    setIsUploading(true);
+    // Optimistic: the framed site shows the picked image instantly.
     send({ type: "cms:update-field", fieldId, value: previewUrl });
+
     uploadImageDraft(fieldId, file)
       .then(() => {
+        if (seq !== uploadSeqRef.current) return; // a newer pick superseded this
+        setIsUploading(false);
         showToast("Image saved as draft");
-        setTimeout(() => URL.revokeObjectURL(previewUrl), 5000);
       })
       .catch((error) => {
-        URL.revokeObjectURL(previewUrl);
+        if (seq !== uploadSeqRef.current) return;
+        setIsUploading(false);
+        setImageError("Upload failed — please try again.");
+        revokePendingUrl();
+        setPendingPreview(null);
         if (previewFields[fieldId]) {
           send({ type: "cms:update-field", fieldId, value: previewFields[fieldId] });
         }
         console.error(error);
-        showToast("Image upload failed");
       });
+  }
+
+  function onImageDragOver(event) {
+    event.preventDefault();
+    setIsDragging(true);
+  }
+  function onImageDragLeave(event) {
+    event.preventDefault();
+    setIsDragging(false);
+  }
+  function onImageDrop(event) {
+    event.preventDefault();
+    setIsDragging(false);
+    const file = event.dataTransfer?.files?.[0];
+    if (file) handleImageFile(file);
+  }
+
+  function closeImageCard() {
+    revokePendingUrl();
+    setPendingPreview(null);
+    setSelectedField(null);
+    setImageError(null);
+    setIsDragging(false);
+    setIsUploading(false);
   }
 
   const projectName = project?.name || projectSlug;
   const selectedImageField = selectedField?.kind === "image" ? selectedField : null;
+  const imageFieldId = selectedImageField?.id ?? null;
+  const imageTitle = imageFieldId ? imageFieldTitle(imageFieldId) : "";
+  const imageIsDraft = imageFieldId ? draftFieldIds.includes(imageFieldId) : false;
+  const imagePreviewSrc = imageFieldId
+    ? (pendingPreview?.fieldId === imageFieldId ? pendingPreview.url : null) ||
+      previewFields[imageFieldId] ||
+      selectedImageField.value ||
+      null
+    : null;
+
+  // Image card is non-modal: Esc and clicks outside it dismiss. Clicks inside
+  // the framed site arrive as field messages, so this only covers parent chrome.
+  useEffect(() => {
+    if (!selectedImageField || mode !== "edit") return;
+    function onKey(event) {
+      if (event.key === "Escape") {
+        event.stopPropagation();
+        closeImageCard();
+      }
+    }
+    function onPointerDown(event) {
+      if (imageCardRef.current && !imageCardRef.current.contains(event.target)) {
+        closeImageCard();
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    window.addEventListener("mousedown", onPointerDown);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("mousedown", onPointerDown);
+    };
+  }, [selectedImageField, mode]);
+
+  // Free any object URL still held when the editor unmounts.
+  useEffect(() => () => revokePendingUrl(), []);
 
   return (
     <div className="stage">
@@ -338,14 +461,63 @@ function Cms() {
       </div>
 
       {selectedImageField && mode === "edit" && (
-        <div className="imagePanel" role="toolbar" aria-label="Image field actions">
-          <div className="imagePanelMeta">
-            <span className="imagePanelLabel">Image</span>
-            <span className="imagePanelField">{selectedImageField.id}</span>
+        <aside
+          ref={imageCardRef}
+          className={`imageCard${isDragging ? " dragging" : ""}`}
+          aria-label={`Edit ${imageTitle} image`}
+        >
+          <div className="imageCardHead">
+            <div className="imageCardMeta">
+              <span className="imageCardEyebrow">Image</span>
+              <span className="imageCardTitle">{imageTitle}</span>
+            </div>
+            <button className="railClose" onClick={closeImageCard} aria-label="Close">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12" /></svg>
+            </button>
           </div>
-          <button className="barBtn primary" onClick={onChooseImage}>
-            Replace
+
+          <button
+            type="button"
+            className={`imageDrop${isDragging ? " drag" : ""}${isUploading ? " uploading" : ""}`}
+            onClick={onChooseImage}
+            onDragOver={onImageDragOver}
+            onDragLeave={onImageDragLeave}
+            onDrop={onImageDrop}
+            aria-label="Replace image — click to choose a file, or drop one here"
+          >
+            {imagePreviewSrc ? (
+              <img src={imagePreviewSrc} alt="" />
+            ) : (
+              <span className="imageDropEmpty">No image yet</span>
+            )}
+            <span className="imageDropHint">
+              {isUploading ? (
+                <><span className="spinner" aria-hidden="true" />Uploading…</>
+              ) : (
+                "Drop an image, or click to replace"
+              )}
+            </span>
           </button>
+
+          {imageError ? (
+            <p className="imageError" role="alert">{imageError}</p>
+          ) : (
+            <p className={`imageStatus${imageIsDraft ? " draft" : ""}`} aria-live="polite">
+              <span className="dot" />
+              {isUploading
+                ? "Saving…"
+                : imageIsDraft
+                  ? "Draft — not published yet"
+                  : "Published — live on your site"}
+            </p>
+          )}
+
+          <div className="imageCardActions">
+            <button className="barBtn primary" onClick={onChooseImage} disabled={isUploading}>
+              {isUploading ? "Uploading…" : "Replace image"}
+            </button>
+          </div>
+
           <input
             ref={imageInputRef}
             className="fileInput"
@@ -353,7 +525,7 @@ function Cms() {
             accept="image/*"
             onChange={onImageFileChange}
           />
-        </div>
+        </aside>
       )}
 
       {/* Toast + first-run hint */}
