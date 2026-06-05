@@ -2,22 +2,24 @@ import { useMemo } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api.js";
 
-const PAGE_SLUG = "home";
-
-export function useCmsProject(projectSlug: string) {
+export function useCmsProject(projectSlug: string, pageSlug: string) {
   const ensureSeedData = useMutation(api.cms.ensureSeedData);
   const projects = useQuery(api.cms.listProjects) ?? [];
   const project = useQuery(api.cms.getProjectBySlug, { slug: projectSlug });
+  const pages = useQuery(
+    api.cms.listPages,
+    project ? { projectSlug } : "skip",
+  ) ?? [];
 
   // getPage returns draft + published separately, so the change-count and the
   // draft-vs-live markers are derived from real persisted state, not a guess.
   const page = useQuery(
     api.cms.getPage,
-    project ? { projectSlug, pageSlug: PAGE_SLUG } : "skip",
+    project ? { projectSlug, pageSlug } : "skip",
   );
   const siteDraftState = useQuery(
     api.cms.getSiteDraftState,
-    project ? { projectSlug, pageSlug: PAGE_SLUG } : "skip",
+    project ? { projectSlug, pageSlug } : "skip",
   );
 
   const publishedFields = page?.publishedFields ?? {};
@@ -38,14 +40,19 @@ export function useCmsProject(projectSlug: string) {
 
   const siteUrl = useMemo(() => {
     if (!project) return "";
-    const parent = encodeURIComponent(window.location.origin);
-    const separator = project.editUrl.includes("?") ? "&" : "?";
-    return `${project.editUrl}${separator}edit=1&parent=${parent}`;
-  }, [project]);
+    const pagePath = page?.page?.path ?? (pageSlug === "home" ? "/" : `/${pageSlug}`);
+    const url = new URL(project.editUrl, window.location.origin);
+    url.pathname = pagePath.startsWith("/") ? pagePath : `/${pagePath}`;
+    url.searchParams.set("edit", "1");
+    url.searchParams.set("parent", window.location.origin);
+    return url.toString();
+  }, [page?.page?.path, pageSlug, project]);
 
   return {
     projects,
     project,
+    page: page?.page ?? null,
+    pages,
     publishedFields,
     previewFields,
     draftFieldIds,

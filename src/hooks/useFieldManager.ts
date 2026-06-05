@@ -2,11 +2,9 @@ import { useRef, useState } from "react";
 import { useMutation } from "convex/react";
 import { api } from "../../convex/_generated/api.js";
 
-const PAGE_SLUG = "home";
-
 type SaveState = "idle" | "saving" | "saved" | "publishing" | "published";
 
-export function useFieldManager(projectSlug: string) {
+export function useFieldManager(projectSlug: string, pageSlug: string) {
   const [saveState, setSaveState] = useState<SaveState>("idle");
   const seededSignatureRef = useRef("");
   // The latest in-flight draft save; publish/discard wait on it so a fast
@@ -21,7 +19,7 @@ export function useFieldManager(projectSlug: string) {
 
   function saveDraftField(fieldId: string, value: string) {
     setSaveState("saving");
-    const saved = saveDraft({ projectSlug, pageSlug: PAGE_SLUG, fields: { [fieldId]: value } })
+    const saved = saveDraft({ projectSlug, pageSlug, fields: { [fieldId]: value } })
       .then(() => setSaveState("saved"));
     pendingSaveRef.current = saved.catch(() => {});
     return saved;
@@ -29,7 +27,7 @@ export function useFieldManager(projectSlug: string) {
 
   async function uploadImageDraft(fieldId: string, file: File) {
     setSaveState("saving");
-    const uploaded = generateImageUploadUrl({ projectSlug, pageSlug: PAGE_SLUG, fieldId })
+    const uploaded = generateImageUploadUrl({ projectSlug, pageSlug, fieldId })
       .then(async (uploadUrl) => {
         if (!uploadUrl) throw new Error("Unable to create image upload URL.");
 
@@ -48,7 +46,7 @@ export function useFieldManager(projectSlug: string) {
         const canonicalValue = `convex-storage:${storageId}`;
         await saveDraft({
           projectSlug,
-          pageSlug: PAGE_SLUG,
+          pageSlug,
           fields: { [fieldId]: canonicalValue },
         });
         setSaveState("saved");
@@ -66,13 +64,13 @@ export function useFieldManager(projectSlug: string) {
   function publish() {
     setSaveState("publishing");
     return pendingSaveRef.current
-      .then(() => publishSite({ projectSlug, pageSlug: PAGE_SLUG }))
+      .then(() => publishSite({ projectSlug, pageSlug }))
       .then(() => setSaveState("published"));
   }
 
   function discard() {
     return pendingSaveRef.current.then(() =>
-      discardSiteDrafts({ projectSlug, pageSlug: PAGE_SLUG }),
+      discardSiteDrafts({ projectSlug, pageSlug }),
     );
   }
 

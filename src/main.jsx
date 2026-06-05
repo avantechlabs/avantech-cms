@@ -11,7 +11,6 @@ import { useIframeMessaging } from "./hooks/useIframeMessaging.js";
 import "./style.css";
 
 const convexUrl = import.meta.env.VITE_CONVEX_URL;
-const PAGE_SLUG = "home";
 
 // Tokens the in-iframe bridge needs to match chrome theme (outlines, chip, drafts).
 const BRIDGE_TOKENS = {
@@ -84,10 +83,13 @@ function CmsApp() {
 
 function Cms() {
   const projectSlug = getProjectSlug();
+  const [selectedPageSlug, setSelectedPageSlug] = useState("home");
 
   const {
     projects,
     project,
+    page,
+    pages,
     previewFields,
     publishedFields,
     draftFieldIds,
@@ -96,7 +98,7 @@ function Cms() {
     previewOrigin,
     siteUrl,
     ensureSeedData,
-  } = useCmsProject(projectSlug);
+  } = useCmsProject(projectSlug, selectedPageSlug);
 
   const {
     saveState,
@@ -107,7 +109,7 @@ function Cms() {
     publish,
     discard,
     resetForProject,
-  } = useFieldManager(projectSlug);
+  } = useFieldManager(projectSlug, selectedPageSlug);
 
   const [mode, setMode] = useState("edit");
   const [theme, setTheme] = useState("light");
@@ -144,10 +146,12 @@ function Cms() {
   const saveCollectionItemDraft = useMutation(api.cms.saveCollectionItemDraft);
   const createCollectionItemDraft = useMutation(api.cms.createCollectionItemDraft);
   const generateCollectionFileUploadUrl = useMutation(api.cms.generateCollectionFileUploadUrl);
+  const syncPages = useMutation(api.cms.syncPages);
 
   const { iframeRef, send } = useIframeMessaging({
     previewOrigin,
     projectSlug,
+    pageSlug: selectedPageSlug,
     onReady: () => {
       send({ type: "cms:discover-fields" });
       send({ type: "cms:set-mode", mode });
@@ -171,12 +175,32 @@ function Cms() {
         seededSignatureRef.current = signature;
         seedDiscoveredFields({
           projectSlug,
-          pageSlug: PAGE_SLUG,
+          pageSlug: selectedPageSlug,
           fields: editable.map((f) => ({ id: f.id, value: f.value })),
         }).then((seeded) => {
           if (seeded) send({ type: "cms:apply-fields", fields: seeded });
         });
       }
+    },
+    onPages: (nextPages) => {
+      const normalizedPages = (nextPages || [])
+        .filter((item) => item?.slug && item?.title && item?.path)
+        .map((item) => ({
+          slug: String(item.slug),
+          title: String(item.title),
+          path: String(item.path),
+        }));
+      if (!normalizedPages.length) return;
+
+      syncPages({ projectSlug, pages: normalizedPages }).catch((error) => {
+        console.error(error);
+        showToast("Couldn’t sync pages");
+      });
+      setSelectedPageSlug((current) =>
+        normalizedPages.some((item) => item.slug === current)
+          ? current
+          : normalizedPages[0].slug,
+      );
     },
     onCollections: setCollections,
     onRecordClicked: (collectionKey, itemSlug) => {
@@ -216,12 +240,16 @@ function Cms() {
   }, [ensureSeedData]);
 
   useEffect(() => {
+    setSelectedPageSlug("home");
+  }, [projectSlug]);
+
+  useEffect(() => {
     resetForProject();
     setCollections([]);
     setSelectedCollectionKey(null);
     setSelectedField(null);
     setSelectedRecord(null);
-  }, [projectSlug]);
+  }, [projectSlug, selectedPageSlug]);
 
   // Mode → html attribute (drives chrome recede) + iframe affordances + first-run hint.
   useEffect(() => {
@@ -362,6 +390,7 @@ function Cms() {
   }
 
   const projectName = project?.name || projectSlug;
+  const pageName = page?.title || pages.find((item) => item.slug === selectedPageSlug)?.title || "Home";
   const selectedImageField = selectedField?.kind === "image" ? selectedField : null;
   const selectedRecordCollection = selectedRecord
     ? collections.find((collection) => collection.key === selectedRecord.collectionKey)
@@ -469,10 +498,28 @@ function Cms() {
 
         <div className="railGroup">
           <div className="railLabel">Pages</div>
-          <div className="railRow on">
-            Home
-            {changeCount > 0 && <span className="draftDot" />}
-          </div>
+          {pages.length > 0 ? (
+            pages.map((item) => (
+              <button
+                key={item.slug}
+                type="button"
+                className={`railRow${item.slug === selectedPageSlug ? " on" : ""}`}
+                onClick={() => {
+                  setRailOpen(false);
+                  closeImageCard();
+                  setSelectedCollectionKey(null);
+                  setSelectedField(null);
+                  setSelectedRecord(null);
+                  setSelectedPageSlug(item.slug);
+                }}
+              >
+                {item.title}
+                {item.draftCount > 0 && <span className="draftDot" />}
+              </button>
+            ))
+          ) : (
+            <div className="railRow muted">No pages yet</div>
+          )}
         </div>
 
         <CollectionsRailSection
@@ -505,7 +552,7 @@ function Cms() {
       <div className="bottomBar" role="toolbar" aria-label="Editor actions">
         <div className="status">
           <span className="dot" />
-          <span>Editing {projectName}</span>
+          <span>Editing {projectName} / {pageName}</span>
           {changeCount > 0 && <span className="unpublished">· {changeCount} unpublished</span>}
         </div>
         <span className="sep" />

@@ -3,6 +3,7 @@ import type {
   CmsToSiteMessage,
   CollectionDefinition,
   FieldData,
+  PageDefinition,
   RecordRegionData,
   SiteToCmsMessage,
 } from "../messages.js";
@@ -10,9 +11,11 @@ import type {
 interface UseIframeMessagingOptions {
   previewOrigin: string;
   projectSlug: string;
+  pageSlug: string;
   onReady: () => void;
   onFields: (fields: FieldData[]) => void;
   onCollections?: (collections: CollectionDefinition[]) => void;
+  onPages?: (pages: PageDefinition[]) => void;
   onRecords?: (records: RecordRegionData[]) => void;
   onFieldClicked: (fieldId: string, kind: FieldData["kind"]) => void;
   onRecordClicked?: (collectionKey: string, itemSlug: string) => void;
@@ -21,7 +24,7 @@ interface UseIframeMessagingOptions {
 }
 
 export function useIframeMessaging(options: UseIframeMessagingOptions) {
-  const { previewOrigin, projectSlug } = options;
+  const { previewOrigin, projectSlug, pageSlug } = options;
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
   // Always call the latest callbacks without re-subscribing the listener.
@@ -66,6 +69,7 @@ export function useIframeMessaging(options: UseIframeMessagingOptions) {
         }
         h.onReady();
       } else if (message.type === "cms:fields") h.onFields(message.fields);
+      else if (message.type === "cms:pages") h.onPages?.(message.pages);
       else if (message.type === "cms:collections") h.onCollections?.(message.collections);
       else if (message.type === "cms:records") h.onRecords?.(message.records);
       else if (message.type === "cms:field-clicked") h.onFieldClicked(message.fieldId, message.kind);
@@ -77,7 +81,7 @@ export function useIframeMessaging(options: UseIframeMessagingOptions) {
 
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
-  }, [previewOrigin, projectSlug]);
+  }, [previewOrigin, projectSlug, pageSlug]);
 
   return { iframeRef, send };
 }

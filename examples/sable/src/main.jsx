@@ -5,10 +5,11 @@ import {
   CmsCollectionsProvider,
   CmsContentProvider,
   CmsImage,
+  CmsPagesProvider,
   CmsText,
   useCmsCollection,
   useEditBridge,
-} from "../../shared/useCmsPage.jsx";
+} from "../../shared/useCmsPage.jsx?cmsPagesProvider";
 import "./style.css";
 
 const IconDraft = () => (
@@ -80,8 +81,16 @@ const STEPS = [
 ];
 
 const PROJECT_SLUG = "project-b";
-const PAGE_SLUG = "home";
+const PAGES = [
+  { slug: "home", title: "Home", path: "/" },
+  { slug: "customers", title: "Customers", path: "/customers" },
+];
 const convexUrl = import.meta.env.VITE_CONVEX_URL;
+
+function currentPage() {
+  const path = window.location.pathname.replace(/\/$/, "") || "/";
+  return PAGES.find((page) => page.path === path) ?? PAGES[0];
+}
 
 // Collection definition registered with the CMS editor. The website owns this
 // shape; the editor reads it to build the rail row and the record form.
@@ -127,14 +136,17 @@ function SiteApp() {
 }
 
 function SiteWithCms() {
+  const page = currentPage();
   return (
-    <CmsContentProvider projectSlug={PROJECT_SLUG} pageSlug={PAGE_SLUG}>
-      <Site />
-    </CmsContentProvider>
+    <CmsPagesProvider pages={PAGES}>
+      <CmsContentProvider projectSlug={PROJECT_SLUG} pageSlug={page.slug}>
+        <Site pageSlug={page.slug} />
+      </CmsContentProvider>
+    </CmsPagesProvider>
   );
 }
 
-function Site() {
+function Site({ pageSlug }) {
   useEditBridge();
   const caseStudies = useCmsCollection(PROJECT_SLUG, "caseStudies");
   const collections = useMemo(
@@ -144,6 +156,18 @@ function Site() {
 
   return (
     <CmsCollectionsProvider collections={collections}>
+      {pageSlug === "customers" ? (
+        <CustomersPage caseStudies={caseStudies} />
+      ) : (
+        <HomePage caseStudies={caseStudies} />
+      )}
+    </CmsCollectionsProvider>
+  );
+}
+
+function HomePage({ caseStudies }) {
+  return (
+    <>
       <nav className="nav" data-cms-field="nav">
         <div className="nav-inner">
           <a href="/" className="nav-brand">
@@ -158,6 +182,9 @@ function Site() {
             </a>
             <a href="#how-it-works" data-cms-field="nav.howItWorks">
               <CmsText fieldId="nav.howItWorks">How it works</CmsText>
+            </a>
+            <a href="/customers" data-cms-field="nav.customers">
+              <CmsText fieldId="nav.customers">Customers</CmsText>
             </a>
             <a href="#" data-cms-field="nav.login">
               <CmsText fieldId="nav.login">Sign in</CmsText>
@@ -410,7 +437,120 @@ function Site() {
           </p>
         </div>
       </footer>
-    </CmsCollectionsProvider>
+    </>
+  );
+}
+
+function CustomersPage({ caseStudies }) {
+  return (
+    <>
+      <nav className="nav" data-cms-field="customers.nav">
+        <div className="nav-inner">
+          <a href="/" className="nav-brand">
+            <span data-cms-field="customers.nav.brandName">
+              <CmsText fieldId="customers.nav.brandName">Sable</CmsText>
+            </span>
+            <span>.</span>
+          </a>
+          <div className="nav-links">
+            <a href="/" data-cms-field="customers.nav.home">
+              <CmsText fieldId="customers.nav.home">Platform</CmsText>
+            </a>
+            <a href="/customers" data-cms-field="customers.nav.customers">
+              <CmsText fieldId="customers.nav.customers">Customers</CmsText>
+            </a>
+            <a href="#" className="nav-cta" data-cms-field="customers.nav.cta">
+              <CmsText fieldId="customers.nav.cta">Request a demo</CmsText>
+            </a>
+          </div>
+        </div>
+      </nav>
+
+      <section className="hero">
+        <div className="hero-inner">
+          <div className="hero-copy">
+            <span className="hero-eyebrow" data-cms-field="customers.hero.eyebrow">
+              <CmsText fieldId="customers.hero.eyebrow">Customer stories</CmsText>
+            </span>
+            <h1 data-cms-field="customers.hero.title">
+              <CmsText fieldId="customers.hero.title">
+                Legal teams use Sable to close cleaner contracts faster.
+              </CmsText>
+            </h1>
+            <p className="hero-sub" data-cms-field="customers.hero.subtitle">
+              <CmsText fieldId="customers.hero.subtitle">
+                See how finance, healthcare, and retail teams standardize contract work without slowing revenue.
+              </CmsText>
+            </p>
+            <div className="hero-actions">
+              <a href="#cases" className="btn-gold" data-cms-field="customers.hero.cta">
+                <CmsText fieldId="customers.hero.cta">Read stories</CmsText>
+              </a>
+              <a href="/" className="btn-outline" data-cms-field="customers.hero.secondary">
+                <CmsText fieldId="customers.hero.secondary">Back to platform</CmsText>
+              </a>
+            </div>
+          </div>
+          <figure className="hero-visual">
+            <CmsImage
+              fieldId="customers.hero.image"
+              src="/images/sable-contract-workspace.png"
+              alt="Contract analytics workspace"
+            />
+          </figure>
+        </div>
+        <div className="hero-rule" aria-hidden="true" />
+      </section>
+
+      <section className="cases" id="cases">
+        <div className="cases-inner">
+          <div className="cases-header">
+            <p className="section-label" data-cms-field="customers.cases.label">
+              <CmsText fieldId="customers.cases.label">Outcomes</CmsText>
+            </p>
+            <h2 className="cases-title" data-cms-field="customers.cases.title">
+              <CmsText fieldId="customers.cases.title">Measurable wins from real contract teams.</CmsText>
+            </h2>
+          </div>
+          <div className="cases-grid">
+            {caseStudies.map((record) => (
+              <article
+                className="case-card"
+                key={record.slug}
+                data-cms-record={`caseStudies:${record.slug}`}
+              >
+                <div className="case-cover">
+                  <img src={record.data.cover} alt="" />
+                </div>
+                <span className="case-industry">{record.data.industry}</span>
+                <h3 className="case-title">{record.data.title}</h3>
+                <p className="case-client">{record.data.client}</p>
+                <p className="case-summary">{record.data.summary}</p>
+              </article>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section className="cta-band">
+        <div className="cta-band-inner">
+          <div className="cta-band-rule" aria-hidden="true" />
+          <h2 data-cms-field="customers.cta.title">
+            <CmsText fieldId="customers.cta.title">Want the same contract velocity?</CmsText>
+          </h2>
+          <p data-cms-field="customers.cta.subtitle">
+            <CmsText fieldId="customers.cta.subtitle">
+              We will map your current contract workflow and show where Sable removes delay.
+            </CmsText>
+          </p>
+          <div className="cta-band-actions">
+            <a href="#" className="btn-gold" data-cms-field="customers.cta.primary">
+              <CmsText fieldId="customers.cta.primary">Book a walkthrough</CmsText>
+            </a>
+          </div>
+        </div>
+      </section>
+    </>
   );
 }
 

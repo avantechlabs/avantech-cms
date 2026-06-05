@@ -20,6 +20,7 @@ import {
   CmsCollectionsProvider,
   CmsContentProvider,
   CmsImage,
+  CmsPagesProvider,
   useCmsCollection,
 } from "./useCmsPage.jsx";
 
@@ -121,6 +122,37 @@ test("CmsCollectionsProvider registers serializable definitions for the bridge",
           slugPath: "slug",
           fields: [{ path: "card.title", label: "Card title", type: "text" }],
         },
+      ],
+    },
+  });
+});
+
+test("CmsPagesProvider registers serializable page definitions for the bridge", async () => {
+  window.history.replaceState({}, "", `/?parent=${encodeURIComponent(parentOrigin)}`);
+  document.body.innerHTML = `<div id="root"></div>`;
+
+  await act(async () => {
+    createRoot(document.getElementById("root")).render(
+      <CmsPagesProvider
+        pages={[
+          { slug: "home", title: "Home", path: "/" },
+          { slug: "pricing", title: "Pricing", path: "/pricing" },
+        ]}
+      >
+        <main />
+      </CmsPagesProvider>,
+    );
+  });
+
+  window.eval(bridgeSource);
+
+  expect(postedMessages).toContainEqual({
+    origin: parentOrigin,
+    message: {
+      type: "cms:pages",
+      pages: [
+        { slug: "home", title: "Home", path: "/" },
+        { slug: "pricing", title: "Pricing", path: "/pricing" },
       ],
     },
   });

@@ -6,6 +6,7 @@ const PUBLISHED_CONTENT_QUERY = "cms:getPublishedContent";
 const PUBLISHED_COLLECTION_QUERY = "cms:listPublishedCollectionItems";
 const PREVIEW_COLLECTION_QUERY = "cms:listPreviewCollectionItems";
 const COLLECTIONS_REGISTRY = "__AVANTECH_CMS_COLLECTIONS__";
+const PAGES_REGISTRY = "__AVANTECH_CMS_PAGES__";
 const CmsContentContext = createContext(null);
 
 function isEditMode() {
@@ -141,6 +142,30 @@ export function CmsCollectionsProvider({ collections = [], children }) {
       }
     };
   }, [serializableCollections]);
+
+  return children;
+}
+
+export function CmsPagesProvider({ pages = [], children }) {
+  const serializablePages = useMemo(
+    () => JSON.parse(JSON.stringify(pages ?? [])),
+    [pages],
+  );
+
+  useEffect(() => {
+    window[PAGES_REGISTRY] = serializablePages;
+    window.dispatchEvent(
+      new CustomEvent("cms:pages-changed", {
+        detail: serializablePages,
+      }),
+    );
+
+    return () => {
+      if (window[PAGES_REGISTRY] === serializablePages) {
+        delete window[PAGES_REGISTRY];
+      }
+    };
+  }, [serializablePages]);
 
   return children;
 }

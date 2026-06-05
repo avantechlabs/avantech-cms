@@ -93,6 +93,26 @@ test("bridge discovers record regions with collection key, item slug, and geomet
   ]);
 });
 
+test("bridge reports registered page definitions", () => {
+  window.__AVANTECH_CMS_PAGES__ = [
+    { slug: "home", title: "Home", path: "/" },
+    { slug: "pricing", title: "Pricing", path: "/pricing" },
+  ];
+
+  installBridge();
+
+  expect(postedMessages).toContainEqual({
+    origin: parentOrigin,
+    message: {
+      type: "cms:pages",
+      pages: [
+        { slug: "home", title: "Home", path: "/" },
+        { slug: "pricing", title: "Pricing", path: "/pricing" },
+      ],
+    },
+  });
+});
+
 test("bridge reports image field clicks with image kind", () => {
   document.body.innerHTML = `<img data-cms-field="hero.image" src="/images/static-hero.jpg" alt="">`;
   installBridge();

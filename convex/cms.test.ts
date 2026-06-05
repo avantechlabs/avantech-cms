@@ -16,7 +16,7 @@ async function storeImage(t: CmsTest, contents: string) {
   });
 }
 
-async function getStoredPageContent(t: CmsTest) {
+async function getStoredPageContent(t: CmsTest, targetPageSlug = pageSlug) {
   return await t.run(async (ctx) => {
     const project = await ctx.db
       .query("projects")
@@ -27,7 +27,7 @@ async function getStoredPageContent(t: CmsTest) {
     const page = await ctx.db
       .query("pages")
       .withIndex("by_projectId_and_slug", (q) =>
-        q.eq("projectId", project._id).eq("slug", pageSlug),
+        q.eq("projectId", project._id).eq("slug", targetPageSlug),
       )
       .unique();
     if (!page) throw new Error("Expected seeded page");
@@ -43,6 +43,19 @@ async function getStoredPageContent(t: CmsTest) {
     return content;
   });
 }
+
+test("seeded demo project URLs match local example dev ports", async () => {
+  const t = convexTest(schema, modules);
+  await t.mutation(api.cms.ensureSeedData);
+
+  const projectA = await t.query(api.cms.getProjectBySlug, { slug: "project-a" });
+  const projectB = await t.query(api.cms.getProjectBySlug, { slug: "project-b" });
+
+  expect(projectA?.origin).toBe("http://localhost:3001");
+  expect(projectA?.editUrl).toBe("http://localhost:3001");
+  expect(projectB?.origin).toBe("http://localhost:3003");
+  expect(projectB?.editUrl).toBe("http://localhost:3003");
+});
 
 test("public content reads resolve canonical Convex storage references", async () => {
   const t = convexTest(schema, modules);
@@ -251,6 +264,116 @@ test("image draft uploads are isolated by project slug and page slug", async () 
 
   expect(projectA["hero.image"]).toBe("convex-storage:project-a-draft");
   expect(projectB["hero.image"]).toBe("/project-b-published.jpg");
+});
+
+test("website-declared pages sync, isolate drafts, and publish or discard project-wide", async () => {
+  const t = convexTest(schema, modules);
+  await t.mutation(api.cms.ensureSeedData);
+  await t.mutation(api.cms.syncPages, {
+    projectSlug,
+    pages: [
+      { slug: "home", title: "Home", path: "/" },
+      { slug: "pricing", title: "Pricing", path: "/pricing" },
+    ],
+  });
+
+  const pages = await t.query(api.cms.listPages, { projectSlug });
+  expect(pages).toEqual([
+    { slug: "home", title: "Home", path: "/", draftFieldIds: [], draftCount: 0 },
+    { slug: "pricing", title: "Pricing", path: "/pricing", draftFieldIds: [], draftCount: 0 },
+  ]);
+
+  await t.mutation(api.cms.seedDiscoveredFields, {
+    projectSlug,
+    pageSlug: "home",
+    fields: [{ id: "hero.title", value: "Published home title" }],
+  });
+  await t.mutation(api.cms.seedDiscoveredFields, {
+    projectSlug,
+    pageSlug: "pricing",
+    fields: [{ id: "pricing.hero.title", value: "Published pricing title" }],
+  });
+  await t.mutation(api.cms.saveDraft, {
+    projectSlug,
+    pageSlug: "pricing",
+    fields: { "pricing.hero.title": "Draft pricing title" },
+  });
+
+  const homePreview = await t.query(api.cms.getPreviewContent, {
+    projectSlug,
+    pageSlug: "home",
+  });
+  const pricingPreview = await t.query(api.cms.getPreviewContent, {
+    projectSlug,
+    pageSlug: "pricing",
+  });
+  const draftState = await t.query(api.cms.getSiteDraftState, {
+    projectSlug,
+    pageSlug: "pricing",
+  });
+  const pagesWithDraft = await t.query(api.cms.listPages, { projectSlug });
+
+  expect(homePreview["hero.title"]).toBe("Published home title");
+  expect(pricingPreview["pricing.hero.title"]).toBe("Draft pricing title");
+  expect(draftState.pageDraftFieldIds).toEqual(["pricing.hero.title"]);
+  expect(draftState.pageDrafts).toEqual([
+    { pageSlug: "pricing", fieldIds: ["pricing.hero.title"], draftCount: 1 },
+  ]);
+  expect(draftState.totalDraftCount).toBe(1);
+  expect(pagesWithDraft).toEqual([
+    { slug: "home", title: "Home", path: "/", draftFieldIds: [], draftCount: 0 },
+    {
+      slug: "pricing",
+      title: "Pricing",
+      path: "/pricing",
+      draftFieldIds: ["pricing.hero.title"],
+      draftCount: 1,
+    },
+  ]);
+
+  await t.mutation(api.cms.publishSite, { projectSlug });
+  const publishedPricing = await t.query(api.cms.getPublishedContent, {
+    projectSlug,
+    pageSlug: "pricing",
+  });
+  const pricingContentAfterPublish = await getStoredPageContent(t, "pricing");
+  const draftStateAfterPublish = await t.query(api.cms.getSiteDraftState, {
+    projectSlug,
+    pageSlug: "pricing",
+  });
+
+  expect(publishedPricing["pricing.hero.title"]).toBe("Draft pricing title");
+  expect(pricingContentAfterPublish.draftFields).toEqual({});
+  expect(draftStateAfterPublish.totalDraftCount).toBe(0);
+
+  await t.mutation(api.cms.saveDraft, {
+    projectSlug,
+    pageSlug: "home",
+    fields: { "hero.title": "Discarded home title" },
+  });
+  await t.mutation(api.cms.saveDraft, {
+    projectSlug,
+    pageSlug: "pricing",
+    fields: { "pricing.hero.title": "Discarded pricing title" },
+  });
+  await t.mutation(api.cms.discardSiteDrafts, { projectSlug });
+
+  const homeAfterDiscard = await t.query(api.cms.getPreviewContent, {
+    projectSlug,
+    pageSlug: "home",
+  });
+  const pricingAfterDiscard = await t.query(api.cms.getPreviewContent, {
+    projectSlug,
+    pageSlug: "pricing",
+  });
+  const finalDraftState = await t.query(api.cms.getSiteDraftState, {
+    projectSlug,
+    pageSlug: "home",
+  });
+
+  expect(homeAfterDiscard["hero.title"]).toBe("Published home title");
+  expect(pricingAfterDiscard["pricing.hero.title"]).toBe("Draft pricing title");
+  expect(finalDraftState.totalDraftCount).toBe(0);
 });
 
 test("publishing an image draft promotes it to published content and clears drafts", async () => {
@@ -719,6 +842,7 @@ test("site-wide publish promotes page and collection drafts together", async () 
 
   expect(draftState).toEqual({
     pageDraftFieldIds: ["hero.title"],
+    pageDrafts: [{ pageSlug, fieldIds: ["hero.title"], draftCount: 1 }],
     collectionDrafts: [{ collectionKey: "projects", slug: "brand-refresh" }],
     collectionDraftCount: 1,
     totalDraftCount: 2,

@@ -74,6 +74,13 @@ const collectionItemsValidator = v.array(
     data: v.any(),
   }),
 );
+const pageDefinitionsValidator = v.array(
+  v.object({
+    slug: v.string(),
+    title: v.string(),
+    path: v.string(),
+  }),
+);
 const discoveredFieldsValidator = v.array(
   v.object({
     id: v.string(),
@@ -115,6 +122,16 @@ async function getContentForPage(
       q.eq("projectId", projectId).eq("pageId", pageId),
     )
     .unique();
+}
+
+async function listPagesForProject(
+  ctx: QueryCtx | MutationCtx,
+  projectId: Id<"projects">,
+): Promise<Doc<"pages">[]> {
+  return await ctx.db
+    .query("pages")
+    .withIndex("by_projectId_and_slug", (q) => q.eq("projectId", projectId))
+    .take(100);
 }
 
 async function getCollectionItem(
@@ -257,6 +274,33 @@ async function requireContent(
   return { project, page, content };
 }
 
+async function ensurePageContent(
+  ctx: MutationCtx,
+  projectId: Id<"projects">,
+  pageId: Id<"pages">,
+) {
+  const existing = await getContentForPage(ctx, projectId, pageId);
+  if (existing) return existing;
+
+  const now = Date.now();
+  const contentId = await ctx.db.insert("pageContent", {
+    projectId,
+    pageId,
+    draftFields: {},
+    publishedFields: {},
+    updatedAt: now,
+  });
+  return {
+    _id: contentId,
+    _creationTime: now,
+    projectId,
+    pageId,
+    draftFields: {},
+    publishedFields: {},
+    updatedAt: now,
+  };
+}
+
 async function upsertPageContent(
   ctx: MutationCtx,
   projectId: Id<"projects">,
@@ -309,6 +353,7 @@ export const ensureSeedData = mutation({
           projectId: project._id,
           slug: HOME_PAGE_SLUG,
           title: "Home",
+          path: "/",
         });
         page = {
           _id: pageId,
@@ -316,7 +361,10 @@ export const ensureSeedData = mutation({
           projectId: project._id,
           slug: HOME_PAGE_SLUG,
           title: "Home",
+          path: "/",
         };
+      } else if (!page.path) {
+        await ctx.db.patch(page._id, { path: "/" });
       }
 
       const content = await getContentForPage(ctx, project._id, page._id);
@@ -365,6 +413,85 @@ export const getProjectBySlug = query({
   args: { slug: v.string() },
   handler: async (ctx, args) => {
     return await getProject(ctx, args.slug);
+  },
+});
+
+export const syncPages = mutation({
+  args: {
+    projectSlug: v.string(),
+    pages: pageDefinitionsValidator,
+  },
+  handler: async (ctx, args) => {
+    const project = await getProject(ctx, args.projectSlug);
+    if (!project) return [];
+
+    const synced = [];
+    for (const pageDefinition of args.pages) {
+      const existing = await getPageForProject(
+        ctx,
+        project._id,
+        pageDefinition.slug,
+      );
+
+      if (existing) {
+        await ctx.db.patch(existing._id, {
+          title: pageDefinition.title,
+          path: pageDefinition.path,
+        });
+        await ensurePageContent(ctx, project._id, existing._id);
+      } else {
+        const pageId = await ctx.db.insert("pages", {
+          projectId: project._id,
+          slug: pageDefinition.slug,
+          title: pageDefinition.title,
+          path: pageDefinition.path,
+        });
+        await ensurePageContent(ctx, project._id, pageId);
+      }
+
+      synced.push({
+        slug: pageDefinition.slug,
+        title: pageDefinition.title,
+        path: pageDefinition.path,
+      });
+    }
+
+    return synced.sort((a, b) => a.title.localeCompare(b.title));
+  },
+});
+
+export const listPages = query({
+  args: {
+    projectSlug: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const project = await getProject(ctx, args.projectSlug);
+    if (!project) return [];
+
+    const pages = await listPagesForProject(ctx, project._id);
+    const result = [];
+    for (const page of pages) {
+      const content = await getContentForPage(ctx, project._id, page._id);
+      const draftFields = content?.draftFields ?? {};
+      const publishedFields = content?.publishedFields ?? {};
+      const draftFieldIds = Object.keys(draftFields)
+        .filter((fieldId) => draftFields[fieldId] !== publishedFields[fieldId])
+        .sort();
+
+      result.push({
+        slug: page.slug,
+        title: page.title,
+        path: page.path ?? (page.slug === HOME_PAGE_SLUG ? "/" : `/${page.slug}`),
+        draftFieldIds,
+        draftCount: draftFieldIds.length,
+      });
+    }
+
+    return result.sort((a, b) => {
+      if (a.slug === HOME_PAGE_SLUG) return -1;
+      if (b.slug === HOME_PAGE_SLUG) return 1;
+      return a.title.localeCompare(b.title);
+    });
   },
 });
 
@@ -629,28 +756,46 @@ export const listPreviewCollectionItems = query({
 export const getSiteDraftState = query({
   args: {
     projectSlug: v.string(),
-    pageSlug: v.string(),
+    pageSlug: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const result = await requireContent(ctx, args.projectSlug, args.pageSlug);
-    if (!result) {
+    const project = await getProject(ctx, args.projectSlug);
+    if (!project) {
       return {
         pageDraftFieldIds: [],
+        pageDrafts: [],
         collectionDrafts: [],
         collectionDraftCount: 0,
         totalDraftCount: 0,
       };
     }
 
-    const draftFields = result.content?.draftFields ?? {};
-    const publishedFields = result.content?.publishedFields ?? {};
-    const pageDraftFieldIds = Object.keys(draftFields)
-      .filter((fieldId) => draftFields[fieldId] !== publishedFields[fieldId])
-      .sort();
+    const pages = await listPagesForProject(ctx, project._id);
+    const pageDrafts = [];
+    let selectedPageDraftFieldIds: string[] = [];
+    for (const page of pages) {
+      const content = await getContentForPage(ctx, project._id, page._id);
+      const draftFields = content?.draftFields ?? {};
+      const publishedFields = content?.publishedFields ?? {};
+      const draftFieldIds = Object.keys(draftFields)
+        .filter((fieldId) => draftFields[fieldId] !== publishedFields[fieldId])
+        .sort();
+
+      if (args.pageSlug && page.slug === args.pageSlug) {
+        selectedPageDraftFieldIds = draftFieldIds;
+      }
+      if (draftFieldIds.length > 0) {
+        pageDrafts.push({
+          pageSlug: page.slug,
+          fieldIds: draftFieldIds,
+          draftCount: draftFieldIds.length,
+        });
+      }
+    }
 
     const collectionItems = await ctx.db
       .query("collectionItems")
-      .withIndex("by_projectId", (q) => q.eq("projectId", result.project._id))
+      .withIndex("by_projectId", (q) => q.eq("projectId", project._id))
       .take(500);
     const collectionDrafts = collectionItems
       .filter(hasMeaningfulCollectionDraft)
@@ -663,10 +808,13 @@ export const getSiteDraftState = query({
       );
 
     return {
-      pageDraftFieldIds,
+      pageDraftFieldIds: selectedPageDraftFieldIds,
+      pageDrafts: pageDrafts.sort((a, b) => a.pageSlug.localeCompare(b.pageSlug)),
       collectionDrafts,
       collectionDraftCount: collectionDrafts.length,
-      totalDraftCount: pageDraftFieldIds.length + collectionDrafts.length,
+      totalDraftCount:
+        pageDrafts.reduce((total, page) => total + page.draftCount, 0) +
+        collectionDrafts.length,
     };
   },
 });
@@ -674,28 +822,32 @@ export const getSiteDraftState = query({
 export const publishSite = mutation({
   args: {
     projectSlug: v.string(),
-    pageSlug: v.string(),
+    pageSlug: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const result = await requireContent(ctx, args.projectSlug, args.pageSlug);
-    if (!result) return null;
+    const project = await getProject(ctx, args.projectSlug);
+    if (!project) return null;
 
-    const draftFields = result.content?.draftFields ?? {};
-    const publishedFields = {
-      ...(result.content?.publishedFields ?? {}),
-      ...draftFields,
-    };
-    await upsertPageContent(ctx, result.project._id, result.page._id, result.content, {
-      draftFields: {},
-      publishedFields,
-      publishedAt: Date.now(),
-    });
+    const pages = await listPagesForProject(ctx, project._id);
+    const now = Date.now();
+    for (const page of pages) {
+      const content = await getContentForPage(ctx, project._id, page._id);
+      const draftFields = content?.draftFields ?? {};
+      const publishedFields = {
+        ...(content?.publishedFields ?? {}),
+        ...draftFields,
+      };
+      await upsertPageContent(ctx, project._id, page._id, content, {
+        draftFields: {},
+        publishedFields,
+        publishedAt: now,
+      });
+    }
 
     const collectionItems = await ctx.db
       .query("collectionItems")
-      .withIndex("by_projectId", (q) => q.eq("projectId", result.project._id))
+      .withIndex("by_projectId", (q) => q.eq("projectId", project._id))
       .take(500);
-    const now = Date.now();
     for (const item of collectionItems) {
       if (item.draftData === undefined) continue;
       await ctx.db.patch(item._id, {
@@ -714,19 +866,24 @@ export const publishSite = mutation({
 export const discardSiteDrafts = mutation({
   args: {
     projectSlug: v.string(),
-    pageSlug: v.string(),
+    pageSlug: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const result = await requireContent(ctx, args.projectSlug, args.pageSlug);
-    if (!result) return null;
+    const project = await getProject(ctx, args.projectSlug);
+    if (!project) return null;
 
-    await upsertPageContent(ctx, result.project._id, result.page._id, result.content, {
-      draftFields: {},
-    });
+    const pages = await listPagesForProject(ctx, project._id);
+    for (const page of pages) {
+      const content = await getContentForPage(ctx, project._id, page._id);
+      if (!content) continue;
+      await upsertPageContent(ctx, project._id, page._id, content, {
+        draftFields: {},
+      });
+    }
 
     const collectionItems = await ctx.db
       .query("collectionItems")
-      .withIndex("by_projectId", (q) => q.eq("projectId", result.project._id))
+      .withIndex("by_projectId", (q) => q.eq("projectId", project._id))
       .take(500);
     const now = Date.now();
     for (const item of collectionItems) {

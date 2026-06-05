@@ -29,6 +29,12 @@ export type RecordRegionData = {
   rect: { left: number; top: number; width: number; height: number };
 };
 
+export type PageDefinition = {
+  slug: string;
+  title: string;
+  path: string;
+};
+
 export type CollectionDefinition = {
   key: string;
   label: string;
@@ -45,6 +51,7 @@ export type SiteToCmsMessage =
   | { type: "cms:ready" }
   | { type: "cms:fields"; fields: FieldData[] }
   | { type: "cms:records"; records: RecordRegionData[] }
+  | { type: "cms:pages"; pages: PageDefinition[] }
   | { type: "cms:collections"; collections: CollectionDefinition[] }
   | { type: "cms:field-clicked"; fieldId: string; kind?: FieldData["kind"] }
   | { type: "cms:record-clicked"; collectionKey: string; itemSlug: string }

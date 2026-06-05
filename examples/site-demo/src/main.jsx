@@ -1,7 +1,12 @@
 import React from "react";
 import { createRoot } from "react-dom/client";
 import { ConvexProvider, ConvexReactClient } from "convex/react";
-import { CmsContentProvider, CmsText, useEditBridge } from "../../shared/useCmsPage.jsx";
+import {
+  CmsContentProvider,
+  CmsPagesProvider,
+  CmsText,
+  useEditBridge,
+} from "../../shared/useCmsPage.jsx?cmsPagesProvider";
 import "./style.css";
 
 const IconInvoice = () => (
@@ -77,8 +82,16 @@ const STEPS = [
 ];
 
 const PROJECT_SLUG = "project-a";
-const PAGE_SLUG = "home";
+const PAGES = [
+  { slug: "home", title: "Home", path: "/" },
+  { slug: "pricing", title: "Pricing", path: "/pricing" },
+];
 const convexUrl = import.meta.env.VITE_CONVEX_URL;
+
+function currentPage() {
+  const path = window.location.pathname.replace(/\/$/, "") || "/";
+  return PAGES.find((page) => page.path === path) ?? PAGES[0];
+}
 
 function SiteApp() {
   if (!convexUrl) {
@@ -94,16 +107,25 @@ function SiteApp() {
 }
 
 function SiteWithCms() {
+  const page = currentPage();
   return (
-    <CmsContentProvider projectSlug={PROJECT_SLUG} pageSlug={PAGE_SLUG}>
-      <Site />
-    </CmsContentProvider>
+    <CmsPagesProvider pages={PAGES}>
+      <CmsContentProvider projectSlug={PROJECT_SLUG} pageSlug={page.slug}>
+        <Site pageSlug={page.slug} />
+      </CmsContentProvider>
+    </CmsPagesProvider>
   );
 }
 
-function Site() {
+function Site({ pageSlug }) {
   useEditBridge();
 
+  if (pageSlug === "pricing") return <PricingPage />;
+
+  return <HomePage />;
+}
+
+function HomePage() {
   return (
     <>
       <nav className="nav" data-cms-field="nav">
@@ -322,6 +344,114 @@ function Site() {
           </p>
         </div>
       </footer>
+    </>
+  );
+}
+
+function PricingPage() {
+  return (
+    <>
+      <nav className="nav" data-cms-field="pricing.nav">
+        <div className="nav-inner">
+          <a href="/" className="nav-brand" data-cms-field="pricing.nav.brand">
+            <CmsText fieldId="pricing.nav.brand">Avantech</CmsText>
+          </a>
+          <div className="nav-links">
+            <a href="/" data-cms-field="pricing.nav.home">
+              <CmsText fieldId="pricing.nav.home">Home</CmsText>
+            </a>
+            <a href="/pricing" className="nav-cta" data-cms-field="pricing.nav.cta">
+              <CmsText fieldId="pricing.nav.cta">Pricing</CmsText>
+            </a>
+          </div>
+        </div>
+      </nav>
+
+      <section className="hero">
+        <div className="hero-inner">
+          <span className="hero-eyebrow" data-cms-field="pricing.hero.eyebrow">
+            <CmsText fieldId="pricing.hero.eyebrow">Simple pricing</CmsText>
+          </span>
+          <h1 data-cms-field="pricing.hero.title">
+            <CmsText fieldId="pricing.hero.title">Start billing faster without platform fees.</CmsText>
+          </h1>
+          <p className="hero-sub" data-cms-field="pricing.hero.subtitle">
+            <CmsText fieldId="pricing.hero.subtitle">
+              Pick the plan that fits your field team and scale when dispatch volume grows.
+            </CmsText>
+          </p>
+          <div className="hero-actions">
+            <a href="#" className="btn-primary" data-cms-field="pricing.hero.cta">
+              <CmsText fieldId="pricing.hero.cta">Start a trial</CmsText>
+            </a>
+            <a href="/" className="btn-ghost" data-cms-field="pricing.hero.secondary">
+              <CmsText fieldId="pricing.hero.secondary">Back to overview</CmsText>
+            </a>
+          </div>
+        </div>
+        <div className="hero-watermark" aria-hidden="true">$</div>
+      </section>
+
+      <section className="features">
+        <div className="features-inner">
+          <div className="features-header">
+            <div>
+              <p className="section-label" data-cms-field="pricing.plans.label">
+                <CmsText fieldId="pricing.plans.label">Plans</CmsText>
+              </p>
+              <h2 className="features-title" data-cms-field="pricing.plans.title">
+                <CmsText fieldId="pricing.plans.title">One workflow, two ways to start.</CmsText>
+              </h2>
+            </div>
+            <p className="features-aside" data-cms-field="pricing.plans.aside">
+              <CmsText fieldId="pricing.plans.aside">
+                Every plan includes work orders, invoice generation, and payment links.
+              </CmsText>
+            </p>
+          </div>
+          <div className="features-grid">
+            <div className="feature-card" data-cms-field="pricing.plan.starter">
+              <p className="feature-n" data-cms-field="pricing.plan.starter.price">
+                <CmsText fieldId="pricing.plan.starter.price">$49/mo</CmsText>
+              </p>
+              <h3 className="feature-title" data-cms-field="pricing.plan.starter.title">
+                <CmsText fieldId="pricing.plan.starter.title">Starter</CmsText>
+              </h3>
+              <p className="feature-desc" data-cms-field="pricing.plan.starter.desc">
+                <CmsText fieldId="pricing.plan.starter.desc">
+                  For small crews that need job-site invoicing without extra admin.
+                </CmsText>
+              </p>
+            </div>
+            <div className="feature-card" data-cms-field="pricing.plan.growth">
+              <p className="feature-n" data-cms-field="pricing.plan.growth.price">
+                <CmsText fieldId="pricing.plan.growth.price">$149/mo</CmsText>
+              </p>
+              <h3 className="feature-title" data-cms-field="pricing.plan.growth.title">
+                <CmsText fieldId="pricing.plan.growth.title">Growth</CmsText>
+              </h3>
+              <p className="feature-desc" data-cms-field="pricing.plan.growth.desc">
+                <CmsText fieldId="pricing.plan.growth.desc">
+                  For dispatch teams that need approvals, reporting, and accounting sync.
+                </CmsText>
+              </p>
+            </div>
+            <div className="feature-card" data-cms-field="pricing.plan.enterprise">
+              <p className="feature-n" data-cms-field="pricing.plan.enterprise.price">
+                <CmsText fieldId="pricing.plan.enterprise.price">Custom</CmsText>
+              </p>
+              <h3 className="feature-title" data-cms-field="pricing.plan.enterprise.title">
+                <CmsText fieldId="pricing.plan.enterprise.title">Enterprise</CmsText>
+              </h3>
+              <p className="feature-desc" data-cms-field="pricing.plan.enterprise.desc">
+                <CmsText fieldId="pricing.plan.enterprise.desc">
+                  For multi-region operations with procurement, compliance, and SSO needs.
+                </CmsText>
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
     </>
   );
 }

@@ -13,6 +13,7 @@ export default defineSchema({
     projectId: v.id("projects"),
     slug: v.string(),
     title: v.string(),
+    path: v.optional(v.string()),
   }).index("by_projectId_and_slug", ["projectId", "slug"]),
 
   pageContent: defineTable({
