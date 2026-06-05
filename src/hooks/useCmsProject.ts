@@ -8,9 +8,30 @@ export function useCmsProject(projectSlug: string) {
   const ensureSeedData = useMutation(api.cms.ensureSeedData);
   const projects = useQuery(api.cms.listProjects) ?? [];
   const project = useQuery(api.cms.getProjectBySlug, { slug: projectSlug });
-  const previewFields = useQuery(
-    api.cms.getPreviewContent,
+
+  // getPage returns draft + published separately, so the change-count and the
+  // draft-vs-live markers are derived from real persisted state, not a guess.
+  const page = useQuery(
+    api.cms.getPage,
     project ? { projectSlug, pageSlug: PAGE_SLUG } : "skip",
+  );
+  const siteDraftState = useQuery(
+    api.cms.getSiteDraftState,
+    project ? { projectSlug, pageSlug: PAGE_SLUG } : "skip",
+  );
+
+  const publishedFields = page?.publishedFields ?? {};
+  const draftFields = page?.draftFields ?? {};
+
+  const previewFields = useMemo(
+    () => ({ ...publishedFields, ...draftFields }),
+    [page],
+  );
+  // Only count a draft as an unpublished change when it actually differs from
+  // the live value — a draft equal to published is a no-op, not a change.
+  const draftFieldIds = useMemo(
+    () => Object.keys(draftFields).filter((id) => draftFields[id] !== publishedFields[id]),
+    [page],
   );
 
   const previewOrigin = project?.origin ?? "";
@@ -22,5 +43,16 @@ export function useCmsProject(projectSlug: string) {
     return `${project.editUrl}${separator}edit=1&parent=${parent}`;
   }, [project]);
 
-  return { projects, project, previewFields, previewOrigin, siteUrl, ensureSeedData };
+  return {
+    projects,
+    project,
+    publishedFields,
+    previewFields,
+    draftFieldIds,
+    siteDraftCount: siteDraftState?.totalDraftCount ?? draftFieldIds.length,
+    collectionDrafts: siteDraftState?.collectionDrafts ?? [],
+    previewOrigin,
+    siteUrl,
+    ensureSeedData,
+  };
 }

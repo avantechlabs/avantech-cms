@@ -3,6 +3,9 @@ import { useQuery } from "convex/react";
 
 const FIELD_SELECTOR = "[data-cms-field]";
 const PUBLISHED_CONTENT_QUERY = "cms:getPublishedContent";
+const PUBLISHED_COLLECTION_QUERY = "cms:listPublishedCollectionItems";
+const PREVIEW_COLLECTION_QUERY = "cms:listPreviewCollectionItems";
+const COLLECTIONS_REGISTRY = "__AVANTECH_CMS_COLLECTIONS__";
 const CmsContentContext = createContext(null);
 
 function isEditMode() {
@@ -21,6 +24,22 @@ function getEditableField(fieldId) {
   const el = document.querySelector(`[data-cms-field="${fieldId}"]`);
   if (!el || !isEditableField(el)) return null;
   return el;
+}
+
+function getFieldValue(cms, fieldId) {
+  if (!Object.prototype.hasOwnProperty.call(cms.fields, fieldId)) {
+    throw new Error(`Missing published CMS value for ${cms.projectSlug}/${cms.pageSlug}:${fieldId}`);
+  }
+
+  return cms.fields[fieldId];
+}
+
+function applyValueToField(el, value) {
+  if (el instanceof HTMLImageElement) {
+    el.src = value;
+  } else {
+    el.textContent = value;
+  }
 }
 
 export function useEditBridge() {
@@ -54,11 +73,19 @@ export function useCmsPage(projectSlug, pageSlug) {
 
     for (const [fieldId, value] of Object.entries(publishedFields)) {
       const el = getEditableField(fieldId);
-      if (el) el.textContent = value;
+      if (el) applyValueToField(el, value);
     }
   }, [publishedFields, projectSlug, pageSlug]);
 
   return publishedFields ?? {};
+}
+
+export function useCmsCollection(projectSlug, collectionKey) {
+  const query = isEditMode() ? PREVIEW_COLLECTION_QUERY : PUBLISHED_COLLECTION_QUERY;
+  return useQuery(query, {
+    projectSlug,
+    collectionKey,
+  }) ?? [];
 }
 
 export function CmsContentProvider({
@@ -90,14 +117,54 @@ export function CmsContentProvider({
   );
 }
 
+function toSerializableCollections(collections) {
+  return JSON.parse(JSON.stringify(collections ?? []));
+}
+
+export function CmsCollectionsProvider({ collections = [], children }) {
+  const serializableCollections = useMemo(
+    () => toSerializableCollections(collections),
+    [collections],
+  );
+
+  useEffect(() => {
+    window[COLLECTIONS_REGISTRY] = serializableCollections;
+    window.dispatchEvent(
+      new CustomEvent("cms:collections-changed", {
+        detail: serializableCollections,
+      }),
+    );
+
+    return () => {
+      if (window[COLLECTIONS_REGISTRY] === serializableCollections) {
+        delete window[COLLECTIONS_REGISTRY];
+      }
+    };
+  }, [serializableCollections]);
+
+  return children;
+}
+
 export function CmsText({ fieldId, children }) {
   const cms = useContext(CmsContentContext);
 
   if (!cms || isEditMode() || !cms.isLoaded) return children;
 
-  if (!Object.prototype.hasOwnProperty.call(cms.fields, fieldId)) {
-    throw new Error(`Missing published CMS value for ${cms.projectSlug}/${cms.pageSlug}:${fieldId}`);
-  }
+  return getFieldValue(cms, fieldId);
+}
 
-  return cms.fields[fieldId];
+export function CmsImage({ fieldId, src, alt = "", ...props }) {
+  const cms = useContext(CmsContentContext);
+  const renderedSrc = !cms || isEditMode() || !cms.isLoaded
+    ? src
+    : getFieldValue(cms, fieldId);
+
+  return (
+    <img
+      {...props}
+      alt={alt}
+      data-cms-field={fieldId}
+      src={renderedSrc}
+    />
+  );
 }

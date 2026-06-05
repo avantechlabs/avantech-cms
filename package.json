@@ -7,7 +7,8 @@
     "dev:example": "pnpm --filter site-demo dev",
     "dev:project-a": "pnpm --filter site-demo dev",
     "dev:project-b": "pnpm --filter sable-demo dev",
-    "dev:examples": "pnpm --parallel --filter site-demo --filter sable-demo dev"
+    "dev:examples": "pnpm --parallel --filter site-demo --filter sable-demo dev",
+    "test": "vitest run"
   },
   "dependencies": {
     "@vitejs/plugin-react": "latest",
@@ -17,6 +18,10 @@
     "vite": "latest"
   },
   "devDependencies": {
-    "typescript": "latest"
+    "@edge-runtime/vm": "^5.0.0",
+    "convex-test": "^0.0.53",
+    "jsdom": "^29.1.1",
+    "typescript": "latest",
+    "vitest": "^4.1.8"
   }
 }

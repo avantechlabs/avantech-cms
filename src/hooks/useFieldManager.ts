@@ -1,52 +1,93 @@
 import { useRef, useState } from "react";
 import { useMutation } from "convex/react";
 import { api } from "../../convex/_generated/api.js";
-import type { FieldData } from "../messages.js";
 
 const PAGE_SLUG = "home";
 
+type SaveState = "idle" | "saving" | "saved" | "publishing" | "published";
+
 export function useFieldManager(projectSlug: string) {
-  const [fields, setFields] = useState<FieldData[]>([]);
-  const [fieldValues, setFieldValues] = useState<Record<string, string>>({});
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "publishing" | "published">("idle");
+  const [saveState, setSaveState] = useState<SaveState>("idle");
   const seededSignatureRef = useRef("");
+  // The latest in-flight draft save; publish/discard wait on it so a fast
+  // commit-then-publish can never act on stale draft state.
+  const pendingSaveRef = useRef<Promise<unknown>>(Promise.resolve());
 
   const seedDiscoveredFields = useMutation(api.cms.seedDiscoveredFields);
+  const generateImageUploadUrl = useMutation(api.cms.generateImageUploadUrl);
   const saveDraft = useMutation(api.cms.saveDraft);
-  const publishPage = useMutation(api.cms.publishPage);
+  const publishSite = useMutation(api.cms.publishSite);
+  const discardSiteDrafts = useMutation(api.cms.discardSiteDrafts);
 
   function saveDraftField(fieldId: string, value: string) {
     setSaveState("saving");
-    setFieldValues((current) => ({ ...current, [fieldId]: value }));
-    saveDraft({ projectSlug, pageSlug: PAGE_SLUG, fields: { [fieldId]: value } })
+    const saved = saveDraft({ projectSlug, pageSlug: PAGE_SLUG, fields: { [fieldId]: value } })
       .then(() => setSaveState("saved"));
+    pendingSaveRef.current = saved.catch(() => {});
+    return saved;
+  }
+
+  async function uploadImageDraft(fieldId: string, file: File) {
+    setSaveState("saving");
+    const uploaded = generateImageUploadUrl({ projectSlug, pageSlug: PAGE_SLUG, fieldId })
+      .then(async (uploadUrl) => {
+        if (!uploadUrl) throw new Error("Unable to create image upload URL.");
+
+        const response = await fetch(uploadUrl, {
+          method: "POST",
+          headers: { "Content-Type": file.type || "application/octet-stream" },
+          body: file,
+        });
+        if (!response.ok) {
+          throw new Error(`Image upload failed with status ${response.status}.`);
+        }
+
+        const { storageId } = await response.json();
+        if (!storageId) throw new Error("Image upload did not return a storage ID.");
+
+        const canonicalValue = `convex-storage:${storageId}`;
+        await saveDraft({
+          projectSlug,
+          pageSlug: PAGE_SLUG,
+          fields: { [fieldId]: canonicalValue },
+        });
+        setSaveState("saved");
+        return canonicalValue;
+      })
+      .catch((error) => {
+        setSaveState("idle");
+        throw error;
+      });
+
+    pendingSaveRef.current = uploaded.catch(() => {});
+    return uploaded;
   }
 
   function publish() {
     setSaveState("publishing");
-    publishPage({ projectSlug, pageSlug: PAGE_SLUG })
+    return pendingSaveRef.current
+      .then(() => publishSite({ projectSlug, pageSlug: PAGE_SLUG }))
       .then(() => setSaveState("published"));
+  }
+
+  function discard() {
+    return pendingSaveRef.current.then(() =>
+      discardSiteDrafts({ projectSlug, pageSlug: PAGE_SLUG }),
+    );
   }
 
   function resetForProject() {
     seededSignatureRef.current = "";
-    setFields([]);
-    setSelectedId(null);
   }
 
   return {
-    fields,
-    setFields,
-    fieldValues,
-    setFieldValues,
-    selectedId,
-    setSelectedId,
     saveState,
     seededSignatureRef,
     seedDiscoveredFields,
     saveDraftField,
+    uploadImageDraft,
     publish,
+    discard,
     resetForProject,
   };
 }
