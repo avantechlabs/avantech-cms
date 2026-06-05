@@ -4,6 +4,7 @@ import { useQuery } from "convex/react";
 const FIELD_SELECTOR = "[data-cms-field]";
 const PUBLISHED_CONTENT_QUERY = "cms:getPublishedContent";
 const PUBLISHED_COLLECTION_QUERY = "cms:listPublishedCollectionItems";
+const PREVIEW_COLLECTION_QUERY = "cms:listPreviewCollectionItems";
 const COLLECTIONS_REGISTRY = "__AVANTECH_CMS_COLLECTIONS__";
 const CmsContentContext = createContext(null);
 
@@ -80,7 +81,8 @@ export function useCmsPage(projectSlug, pageSlug) {
 }
 
 export function useCmsCollection(projectSlug, collectionKey) {
-  return useQuery(PUBLISHED_COLLECTION_QUERY, {
+  const query = isEditMode() ? PREVIEW_COLLECTION_QUERY : PUBLISHED_COLLECTION_QUERY;
+  return useQuery(query, {
     projectSlug,
     collectionKey,
   }) ?? [];

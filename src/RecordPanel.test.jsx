@@ -95,6 +95,55 @@ test("emits changed field path and value from simple controls", () => {
   expect(onFieldChange).toHaveBeenCalledWith("card.title", "Draft title");
 });
 
+test("keeps active long-text input stable when preview data refreshes behind it", () => {
+  const onFieldChange = vi.fn();
+  document.body.innerHTML = `<div id="root"></div>`;
+  const root = createRoot(document.getElementById("root"));
+  const collection = {
+    key: "projects",
+    label: "Projects",
+    fields: [{ path: "card.description", label: "Card description", type: "longText" }],
+  };
+  const record = { collectionKey: "projects", itemSlug: "brand-refresh" };
+
+  act(() => {
+    root.render(
+      <RecordPanel
+        collection={collection}
+        record={record}
+        recordData={{ card: { description: "Published description" } }}
+        onFieldChange={onFieldChange}
+        onClose={() => {}}
+      />,
+    );
+  });
+
+  const input = document.querySelector("textarea");
+  act(() => {
+    input.focus();
+    Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value").set.call(
+      input,
+      "Draft description",
+    );
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+
+  act(() => {
+    root.render(
+      <RecordPanel
+        collection={collection}
+        record={record}
+        recordData={{ card: { description: "Published description" } }}
+        onFieldChange={onFieldChange}
+        onClose={() => {}}
+      />,
+    );
+  });
+
+  expect(document.querySelector("textarea").value).toBe("Draft description");
+  expect(onFieldChange).toHaveBeenCalledWith("card.description", "Draft description");
+});
+
 test("renders scalar controls from field definitions", () => {
   const html = renderToStaticMarkup(
     <RecordPanel
@@ -227,7 +276,7 @@ test("renders object fields and emits nested object paths", () => {
   expect(onFieldChange).toHaveBeenCalledWith("seo.title", "Draft SEO title");
 });
 
-test("adds and removes list items as draft operations", () => {
+test("adds, edits, reorders, and removes list items as draft operations", () => {
   const onFieldChange = vi.fn();
   document.body.innerHTML = `<div id="root"></div>`;
 
@@ -248,15 +297,28 @@ test("adds and removes list items as draft operations", () => {
           ],
         }}
         record={{ collectionKey: "projects", itemSlug: "brand-refresh" }}
-        recordData={{ benefits: [{ title: "First" }] }}
+        recordData={{ benefits: [{ id: "first", title: "First" }, { id: "second", title: "Second" }] }}
         onFieldChange={onFieldChange}
         onClose={() => {}}
       />,
     );
   });
 
+  const firstInput = document.querySelector("input");
+  act(() => {
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(
+      firstInput,
+      "Updated first",
+    );
+    firstInput.dispatchEvent(new Event("input", { bubbles: true }));
+  });
   act(() => {
     [...document.querySelectorAll("button")].find((button) => button.textContent === "Add").click();
+  });
+  act(() => {
+    [...document.querySelectorAll("button")]
+      .filter((button) => button.textContent === "Down")[0]
+      .click();
   });
   act(() => {
     [...document.querySelectorAll("button")]
@@ -265,8 +327,19 @@ test("adds and removes list items as draft operations", () => {
   });
 
   expect(onFieldChange).toHaveBeenCalledWith("benefits", [
-    { title: "First" },
+    { id: "first", title: "Updated first" },
+    { id: "second", title: "Second" },
+  ]);
+  expect(onFieldChange).toHaveBeenCalledWith("benefits", [
+    { id: "first", title: "First" },
+    { id: "second", title: "Second" },
     { title: "" },
   ]);
-  expect(onFieldChange).toHaveBeenCalledWith("benefits", []);
+  expect(onFieldChange).toHaveBeenCalledWith("benefits", [
+    { id: "second", title: "Second" },
+    { id: "first", title: "First" },
+  ]);
+  expect(onFieldChange).toHaveBeenCalledWith("benefits", [
+    { id: "second", title: "Second" },
+  ]);
 });

@@ -178,6 +178,77 @@ function setAtPath(source, path, value) {
   return root;
 }
 
+const listItemKeys = new WeakMap();
+let listItemKeySequence = 0;
+
+function listItemKey(item, index) {
+  if (item && typeof item === "object") {
+    const explicitKey = item.id ?? item._key;
+    if (explicitKey != null) return String(explicitKey);
+    let key = listItemKeys.get(item);
+    if (!key) {
+      key = `generated-${++listItemKeySequence}`;
+      listItemKeys.set(item, key);
+    }
+    return key;
+  }
+  return `primitive-${index}-${String(item)}`;
+}
+
+function createListItem(defaultItem) {
+  if (defaultItem && typeof defaultItem === "object" && !Array.isArray(defaultItem)) {
+    return { ...defaultItem };
+  }
+  return defaultItem;
+}
+
+function BufferedTextControl({ id, label, inputType = "text", multiline = false, value, onValueChange }) {
+  const externalValue = value == null ? "" : String(value);
+  const [localValue, setLocalValue] = useState(externalValue);
+  const inputRef = useRef(null);
+
+  useEffect(() => {
+    setLocalValue(externalValue);
+  }, [id]);
+
+  useEffect(() => {
+    if (typeof document !== "undefined" && document.activeElement === inputRef.current) return;
+    setLocalValue(externalValue);
+  }, [externalValue]);
+
+  function change(nextValue) {
+    setLocalValue(nextValue);
+    onValueChange(nextValue);
+  }
+
+  if (multiline) {
+    return (
+      <label className="recordField" htmlFor={id}>
+        <span>{label}</span>
+        <textarea
+          id={id}
+          ref={inputRef}
+          value={localValue}
+          onChange={(event) => change(event.target.value)}
+        />
+      </label>
+    );
+  }
+
+  return (
+    <label className="recordField" htmlFor={id}>
+      <span>{label}</span>
+      <input
+        id={id}
+        ref={inputRef}
+        type={inputType}
+        value={localValue}
+        onChange={(event) => change(event.target.value)}
+      />
+    </label>
+  );
+}
+
 function FieldControl({ field, value, onChange, onUploadFile, uploadable = true }) {
   const id = `record-field-${field.path}`;
   const label = field.label ?? humanizeFieldLabel(field.path);
@@ -195,10 +266,13 @@ function FieldControl({ field, value, onChange, onUploadFile, uploadable = true 
 
   if (type === "textarea" || type === "longText") {
     return (
-      <label className="recordField" htmlFor={id}>
-        <span>{label}</span>
-        <textarea id={id} value={stringValue} onChange={(event) => onChange(field, event.target.value)} />
-      </label>
+      <BufferedTextControl
+        id={id}
+        label={label}
+        multiline
+        value={value}
+        onValueChange={(nextValue) => onChange(field, nextValue)}
+      />
     );
   }
 
@@ -234,12 +308,12 @@ function FieldControl({ field, value, onChange, onUploadFile, uploadable = true 
       <div className="recordListField">
         <div className="recordListHead">
           <span>{label}</span>
-          <button type="button" className="barBtn" onClick={() => updateItems([...items, defaultItem])}>
+          <button type="button" className="barBtn" onClick={() => updateItems([...items, createListItem(defaultItem)])}>
             Add
           </button>
         </div>
         {items.map((item, index) => (
-          <div className="recordListItem" key={item.id ?? index}>
+          <div className="recordListItem" key={listItemKey(item, index)}>
             <div className="recordListItemHead">
               <span>Item {index + 1}</span>
               <div className="recordListActions">
@@ -368,15 +442,13 @@ function FieldControl({ field, value, onChange, onUploadFile, uploadable = true 
   if (["url", "email", "date", "datetime", "color"].includes(type)) {
     const inputType = type === "datetime" ? "datetime-local" : type;
     return (
-      <label className="recordField" htmlFor={id}>
-        <span>{label}</span>
-        <input
-          id={id}
-          type={inputType}
-          value={stringValue}
-          onChange={(event) => onChange(field, event.target.value)}
-        />
-      </label>
+      <BufferedTextControl
+        id={id}
+        label={label}
+        inputType={inputType}
+        value={value}
+        onValueChange={(nextValue) => onChange(field, nextValue)}
+      />
     );
   }
 
@@ -389,10 +461,12 @@ function FieldControl({ field, value, onChange, onUploadFile, uploadable = true 
   }
 
   return (
-    <label className="recordField" htmlFor={id}>
-      <span>{label}</span>
-      <input id={id} type="text" value={stringValue} onChange={(event) => onChange(field, event.target.value)} />
-    </label>
+    <BufferedTextControl
+      id={id}
+      label={label}
+      value={value}
+      onValueChange={(nextValue) => onChange(field, nextValue)}
+    />
   );
 }
 

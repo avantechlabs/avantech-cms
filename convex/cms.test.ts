@@ -578,6 +578,94 @@ test("collection item drafts save by nested path and preview over published data
   ]);
 });
 
+test("object and list collection drafts preview, publish, and discard through site lifecycle", async () => {
+  const t = convexTest(schema, modules);
+  await t.mutation(api.cms.ensureSeedData);
+  await t.mutation(api.cms.seedPublishedCollectionItems, {
+    projectSlug,
+    collectionKey: "projects",
+    items: [
+      {
+        slug: "brand-refresh",
+        data: {
+          seo: { title: "Published SEO title" },
+          benefits: [{ id: "first", title: "Published benefit" }],
+        },
+      },
+    ],
+  });
+
+  await t.mutation(api.cms.saveCollectionItemDraft, {
+    projectSlug,
+    collectionKey: "projects",
+    slug: "brand-refresh",
+    path: "seo.title",
+    value: "Draft SEO title",
+  });
+  await t.mutation(api.cms.saveCollectionItemDraft, {
+    projectSlug,
+    collectionKey: "projects",
+    slug: "brand-refresh",
+    path: "benefits",
+    value: [
+      { id: "second", title: "Second benefit" },
+      { id: "first", title: "Updated first benefit" },
+    ],
+  });
+
+  const previewBeforePublish = await t.query(api.cms.listPreviewCollectionItems, {
+    projectSlug,
+    collectionKey: "projects",
+  });
+  const publicBeforePublish = await t.query(api.cms.listPublishedCollectionItems, {
+    projectSlug,
+    collectionKey: "projects",
+  });
+
+  await t.mutation(api.cms.publishSite, { projectSlug, pageSlug });
+  const publicAfterPublish = await t.query(api.cms.listPublishedCollectionItems, {
+    projectSlug,
+    collectionKey: "projects",
+  });
+
+  await t.mutation(api.cms.saveCollectionItemDraft, {
+    projectSlug,
+    collectionKey: "projects",
+    slug: "brand-refresh",
+    path: "benefits",
+    value: [{ id: "discarded", title: "Discarded benefit" }],
+  });
+  await t.mutation(api.cms.discardSiteDrafts, { projectSlug, pageSlug });
+  const previewAfterDiscard = await t.query(api.cms.listPreviewCollectionItems, {
+    projectSlug,
+    collectionKey: "projects",
+  });
+
+  expect(previewBeforePublish).toEqual([
+    {
+      slug: "brand-refresh",
+      data: {
+        seo: { title: "Draft SEO title" },
+        benefits: [
+          { id: "second", title: "Second benefit" },
+          { id: "first", title: "Updated first benefit" },
+        ],
+      },
+    },
+  ]);
+  expect(publicBeforePublish).toEqual([
+    {
+      slug: "brand-refresh",
+      data: {
+        seo: { title: "Published SEO title" },
+        benefits: [{ id: "first", title: "Published benefit" }],
+      },
+    },
+  ]);
+  expect(publicAfterPublish).toEqual(previewBeforePublish);
+  expect(previewAfterDiscard).toEqual(publicAfterPublish);
+});
+
 test("site-wide publish promotes page and collection drafts together", async () => {
   const t = convexTest(schema, modules);
   await t.mutation(api.cms.ensureSeedData);

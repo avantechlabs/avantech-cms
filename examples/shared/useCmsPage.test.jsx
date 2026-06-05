@@ -148,3 +148,27 @@ test("useCmsCollection reads published records through a public string query", (
     args: { projectSlug: "project-a", collectionKey: "projects" },
   });
 });
+
+test("useCmsCollection reads preview records in edit mode", () => {
+  window.history.replaceState({}, "", "/?edit=1");
+  queryState.result = [
+    { slug: "draft-record", data: { card: { title: "Draft record" } } },
+  ];
+  let records;
+
+  function CollectionConsumer() {
+    records = useCmsCollection("project-a", "projects");
+    return <span>{records[0].data.card.title}</span>;
+  }
+
+  const html = renderToStaticMarkup(<CollectionConsumer />);
+
+  expect(html).toContain("Draft record");
+  expect(records).toEqual([
+    { slug: "draft-record", data: { card: { title: "Draft record" } } },
+  ]);
+  expect(queryState.calls).toContainEqual({
+    query: "cms:listPreviewCollectionItems",
+    args: { projectSlug: "project-a", collectionKey: "projects" },
+  });
+});
