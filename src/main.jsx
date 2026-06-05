@@ -76,8 +76,204 @@ function CmsApp() {
   }
   return (
     <ConvexProvider client={convexClient}>
-      <Cms />
+      {window.location.pathname.startsWith("/admin/projects") ? <ProjectsAdmin /> : <Cms />}
     </ConvexProvider>
+  );
+}
+
+const emptyProjectForm = {
+  slug: "",
+  name: "",
+  origin: "",
+  editUrl: "",
+};
+
+function normalizeSlug(value) {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9-]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+function ProjectsAdmin() {
+  const projects = useQuery(api.cms.listProjects) ?? [];
+  const ensureSeedData = useMutation(api.cms.ensureSeedData);
+  const createProject = useMutation(api.cms.createProject);
+  const updateProject = useMutation(api.cms.updateProject);
+  const [draft, setDraft] = useState(emptyProjectForm);
+  const [editingSlug, setEditingSlug] = useState(null);
+  const [saveState, setSaveState] = useState("idle");
+
+  useEffect(() => {
+    ensureSeedData();
+  }, [ensureSeedData]);
+
+  const editingProject = editingSlug
+    ? projects.find((project) => project.slug === editingSlug)
+    : null;
+  const canSave =
+    draft.slug.trim() &&
+    draft.name.trim() &&
+    draft.origin.trim() &&
+    draft.editUrl.trim() &&
+    saveState !== "saving";
+
+  function updateDraft(key, value) {
+    setDraft((current) => ({ ...current, [key]: value }));
+  }
+
+  function resetForm() {
+    setEditingSlug(null);
+    setDraft(emptyProjectForm);
+    setSaveState("idle");
+  }
+
+  function startEdit(project) {
+    setEditingSlug(project.slug);
+    setDraft({
+      slug: project.slug,
+      name: project.name,
+      origin: project.origin,
+      editUrl: project.editUrl,
+    });
+    setSaveState("idle");
+  }
+
+  function onSubmit(event) {
+    event.preventDefault();
+    if (!canSave) return;
+
+    const payload = {
+      slug: normalizeSlug(draft.slug),
+      name: draft.name.trim(),
+      origin: draft.origin.trim(),
+      editUrl: draft.editUrl.trim(),
+    };
+
+    setSaveState("saving");
+    const action = editingProject
+      ? updateProject({ ...payload, slug: editingProject.slug })
+      : createProject(payload);
+
+    action
+      .then((project) => {
+        setSaveState("saved");
+        if (project?.slug) {
+          setEditingSlug(project.slug);
+          setDraft({
+            slug: project.slug,
+            name: project.name,
+            origin: project.origin,
+            editUrl: project.editUrl,
+          });
+        } else {
+          resetForm();
+        }
+      })
+      .catch((error) => {
+        console.error(error);
+        setSaveState("error");
+      });
+  }
+
+  return (
+    <main className="adminShell">
+      <header className="adminTop">
+        <div>
+          <p className="adminEyebrow">Admin</p>
+          <h1>Projects</h1>
+        </div>
+        <a className="barBtn primary" href={`/cms/${projects[0]?.slug ?? "project-a"}`}>
+          Open editor
+        </a>
+      </header>
+
+      <section className="adminGrid" aria-label="Project registry">
+        <div className="adminPanel">
+          <div className="adminPanelHead">
+            <h2>Registered sites</h2>
+            <button className="barBtn" type="button" onClick={resetForm}>
+              New project
+            </button>
+          </div>
+          <div className="projectList">
+            {projects.length > 0 ? (
+              projects.map((project) => (
+                <article
+                  key={project._id}
+                  className={`projectRow${project.slug === editingSlug ? " on" : ""}`}
+                >
+                  <button type="button" onClick={() => startEdit(project)}>
+                    <strong>{project.name}</strong>
+                    <span>{project.slug}</span>
+                  </button>
+                  <a href={`/cms/${project.slug}`}>Edit</a>
+                </article>
+              ))
+            ) : (
+              <p className="adminEmpty">No projects registered yet.</p>
+            )}
+          </div>
+        </div>
+
+        <form className="adminPanel projectForm" onSubmit={onSubmit}>
+          <div className="adminPanelHead">
+            <h2>{editingProject ? "Edit project" : "Create project"}</h2>
+            {saveState === "saved" && <span className="savePill">Saved</span>}
+            {saveState === "error" && <span className="savePill error">Couldn’t save</span>}
+          </div>
+
+          <label>
+            <span>Name</span>
+            <input
+              value={draft.name}
+              onChange={(event) => updateDraft("name", event.target.value)}
+              placeholder="Sable"
+            />
+          </label>
+
+          <label>
+            <span>Slug</span>
+            <input
+              value={draft.slug}
+              onChange={(event) => updateDraft("slug", normalizeSlug(event.target.value))}
+              placeholder="sable"
+              disabled={Boolean(editingProject)}
+            />
+          </label>
+
+          <label>
+            <span>Origin</span>
+            <input
+              value={draft.origin}
+              onChange={(event) => updateDraft("origin", event.target.value)}
+              placeholder="https://sable.com"
+            />
+          </label>
+
+          <label>
+            <span>Edit URL</span>
+            <input
+              value={draft.editUrl}
+              onChange={(event) => updateDraft("editUrl", event.target.value)}
+              placeholder="https://sable.com"
+            />
+          </label>
+
+          <div className="adminActions">
+            <button className="barBtn primary" type="submit" disabled={!canSave}>
+              {saveState === "saving" ? "Saving…" : editingProject ? "Update project" : "Create project"}
+            </button>
+            {editingProject && (
+              <a className="barBtn" href={`/cms/${editingProject.slug}`}>
+                Open editor
+              </a>
+            )}
+          </div>
+        </form>
+      </section>
+    </main>
   );
 }
 

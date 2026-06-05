@@ -57,6 +57,48 @@ test("seeded demo project URLs match local example dev ports", async () => {
   expect(projectB?.editUrl).toBe("http://localhost:3003");
 });
 
+test("admin can create a project with editable home content shell", async () => {
+  const t = convexTest(schema, modules);
+
+  const project = await t.mutation(api.cms.createProject, {
+    slug: "sable-cloud",
+    name: "Sable Cloud",
+    origin: "https://sable.example.com",
+    editUrl: "https://sable.example.com",
+  });
+
+  expect(project?.slug).toBe("sable-cloud");
+  const projects = await t.query(api.cms.listProjects);
+  expect(projects.map((item) => item.slug)).toEqual(["sable-cloud"]);
+
+  const pages = await t.query(api.cms.listPages, { projectSlug: "sable-cloud" });
+  expect(pages).toEqual([
+    { slug: "home", title: "Home", path: "/", draftFieldIds: [], draftCount: 0 },
+  ]);
+});
+
+test("admin can update project connection URLs without changing the slug", async () => {
+  const t = convexTest(schema, modules);
+  await t.mutation(api.cms.createProject, {
+    slug: "sable-cloud",
+    name: "Sable Cloud",
+    origin: "https://old.example.com",
+    editUrl: "https://old.example.com",
+  });
+
+  const updated = await t.mutation(api.cms.updateProject, {
+    slug: "sable-cloud",
+    name: "Sable",
+    origin: "https://sable.example.com",
+    editUrl: "https://edit.sable.example.com",
+  });
+
+  expect(updated?.slug).toBe("sable-cloud");
+  expect(updated?.name).toBe("Sable");
+  expect(updated?.origin).toBe("https://sable.example.com");
+  expect(updated?.editUrl).toBe("https://edit.sable.example.com");
+});
+
 test("public content reads resolve canonical Convex storage references", async () => {
   const t = convexTest(schema, modules);
   await t.mutation(api.cms.ensureSeedData);

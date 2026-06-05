@@ -152,6 +152,14 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
+function normalizeProjectSlug(value: string) {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9-]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
 function setAtPath(source: unknown, path: string, value: unknown): Record<string, unknown> {
   const keys = path.split(".").filter(Boolean);
   if (keys.length === 0) throw new Error("Collection draft path must not be empty.");
@@ -405,7 +413,8 @@ export const ensureSeedData = mutation({
 export const listProjects = query({
   args: {},
   handler: async (ctx) => {
-    return await ctx.db.query("projects").take(20);
+    const projects = await ctx.db.query("projects").take(100);
+    return projects.sort((a, b) => a.name.localeCompare(b.name));
   },
 });
 
@@ -413,6 +422,78 @@ export const getProjectBySlug = query({
   args: { slug: v.string() },
   handler: async (ctx, args) => {
     return await getProject(ctx, args.slug);
+  },
+});
+
+export const createProject = mutation({
+  args: {
+    slug: v.string(),
+    name: v.string(),
+    origin: v.string(),
+    editUrl: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const slug = normalizeProjectSlug(args.slug);
+    const name = args.name.trim();
+    const origin = args.origin.trim();
+    const editUrl = args.editUrl.trim();
+
+    if (!slug || !name || !origin || !editUrl) {
+      throw new Error("Project fields are required.");
+    }
+
+    const existing = await getProject(ctx, slug);
+    if (existing) throw new Error("Project slug already exists.");
+
+    const projectId = await ctx.db.insert("projects", {
+      slug,
+      name,
+      origin,
+      editUrl,
+    });
+    const pageId = await ctx.db.insert("pages", {
+      projectId,
+      slug: HOME_PAGE_SLUG,
+      title: "Home",
+      path: "/",
+    });
+    await ctx.db.insert("pageContent", {
+      projectId,
+      pageId,
+      draftFields: {},
+      publishedFields: {},
+      updatedAt: Date.now(),
+    });
+
+    return await ctx.db.get(projectId);
+  },
+});
+
+export const updateProject = mutation({
+  args: {
+    slug: v.string(),
+    name: v.string(),
+    origin: v.string(),
+    editUrl: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const project = await getProject(ctx, args.slug);
+    if (!project) throw new Error("Project not found.");
+
+    const name = args.name.trim();
+    const origin = args.origin.trim();
+    const editUrl = args.editUrl.trim();
+    if (!name || !origin || !editUrl) {
+      throw new Error("Project fields are required.");
+    }
+
+    await ctx.db.patch(project._id, {
+      name,
+      origin,
+      editUrl,
+    });
+
+    return await ctx.db.get(project._id);
   },
 });
 
