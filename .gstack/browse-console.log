@@ -1,0 +1,6 @@
+[2026-06-05T17:25:47.472Z] [debug] [vite] connecting...
+[2026-06-05T17:25:47.482Z] [debug] [vite] connected.
+[2026-06-05T17:25:47.499Z] [info] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold
+[2026-06-05T17:25:47.854Z] [debug] [vite] connecting...
+[2026-06-05T17:25:47.934Z] [debug] [vite] connected.
+[2026-06-05T17:25:48.048Z] [error] Failed to load resource: net::ERR_UNKNOWN_URL_SCHEME

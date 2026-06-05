@@ -1,0 +1,9 @@
+interface:
+  display_name: "Worse Is Better"
+  short_description: "Scope simpler v1 engineering designs."
+  default_prompt:
+    "Use $wib to scope the smallest useful v1, name the NOT list,
+    and surface edge cases for me to decide."
+
+policy:
+  allow_implicit_invocation: true
