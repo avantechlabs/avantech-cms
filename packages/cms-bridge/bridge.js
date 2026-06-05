@@ -6,6 +6,8 @@
   if (!parentOrigin) return;
 
   const FIELD_SELECTOR = "[data-cms-field]";
+  const RECORD_SELECTOR = "[data-cms-record]";
+  const COLLECTIONS_REGISTRY = "__AVANTECH_CMS_COLLECTIONS__";
   const scheduleFrame = window.requestAnimationFrame || ((callback) => setTimeout(callback, 0));
 
   let scheduled = false;
@@ -60,6 +62,11 @@
       /* calm "you changed this": soft tint + soft solid accent, never an alarming dashed box */
       background-color: var(--cms-draft-tint);
       outline-color: color-mix(in srgb, var(--cms-draft) 45%, transparent);
+    }
+    body.cms-edit [data-cms-record].cms-draft-record {
+      outline: 2px solid color-mix(in srgb, var(--cms-draft) 65%, transparent);
+      outline-offset: 8px;
+      background-color: var(--cms-draft-tint);
     }
     body.cms-edit [data-cms-field].cms-leaf.cms-hover {
       outline-color: var(--cms-gold);
@@ -142,14 +149,40 @@
       rect: { left: r.left, top: r.top, width: r.width, height: r.height },
     };
   }
+  function parseRecordId(value) {
+    const [collectionKey, ...slugParts] = String(value || "").split(":");
+    const itemSlug = slugParts.join(":");
+    if (!collectionKey || !itemSlug) return null;
+    return { collectionKey, itemSlug };
+  }
+  function recordFromElement(el) {
+    const identity = parseRecordId(el.dataset.cmsRecord);
+    if (!identity) return null;
+    const r = el.getBoundingClientRect();
+    return {
+      ...identity,
+      rect: { left: r.left, top: r.top, width: r.width, height: r.height },
+    };
+  }
+  function allRecords() {
+    return [...document.querySelectorAll(RECORD_SELECTOR)].map(recordFromElement).filter(Boolean);
+  }
   function send(message) {
     parent.postMessage(message, parentOrigin);
+  }
+  function registeredCollections() {
+    const collections = window[COLLECTIONS_REGISTRY];
+    return Array.isArray(collections) ? collections : [];
+  }
+  function sendCollections(collections = registeredCollections()) {
+    send({ type: "cms:collections", collections });
   }
   function sendFields() {
     scheduled = false;
     if (typeof document === "undefined") return;
     markLeaves();
     send({ type: "cms:fields", fields: allFields().map(fieldFromElement) });
+    send({ type: "cms:records", records: allRecords() });
   }
   function scheduleFields() {
     // Never re-report field geometry/values mid-edit — it would surface
@@ -240,6 +273,20 @@
   document.addEventListener(
     "click",
     (event) => {
+      const record = event.target.closest(RECORD_SELECTOR);
+      const recordIdentity = record && parseRecordId(record.dataset.cmsRecord);
+      if (editMode && recordIdentity) {
+        event.preventDefault();
+        event.stopPropagation();
+        commit();
+        send({
+          type: "cms:record-clicked",
+          collectionKey: recordIdentity.collectionKey,
+          itemSlug: recordIdentity.itemSlug,
+        });
+        return;
+      }
+
       const field = event.target.closest(FIELD_SELECTOR);
       if (editMode && field && isLeaf(field)) {
         event.preventDefault();
@@ -333,7 +380,20 @@
         }
         break;
       }
+      case "cms:set-draft-records": {
+        const drafts = new Set(
+          (message.records || []).map((record) => `${record.collectionKey}:${record.slug}`),
+        );
+        for (const el of document.querySelectorAll(RECORD_SELECTOR)) {
+          el.classList.toggle("cms-draft-record", drafts.has(el.dataset.cmsRecord));
+        }
+        break;
+      }
     }
+  });
+
+  window.addEventListener("cms:collections-changed", (event) => {
+    sendCollections(event.detail);
   });
 
   // Re-report field geometry on layout changes, but never while the owner is typing.
@@ -351,6 +411,7 @@
   function boot() {
     mountChrome();
     send({ type: "cms:ready" });
+    sendCollections();
     scheduleFields();
   }
   if (document.readyState === "loading") {

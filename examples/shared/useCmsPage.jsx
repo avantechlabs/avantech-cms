@@ -3,6 +3,9 @@ import { useQuery } from "convex/react";
 
 const FIELD_SELECTOR = "[data-cms-field]";
 const PUBLISHED_CONTENT_QUERY = "cms:getPublishedContent";
+const PUBLISHED_COLLECTION_QUERY = "cms:listPublishedCollectionItems";
+const PREVIEW_COLLECTION_QUERY = "cms:listPreviewCollectionItems";
+const COLLECTIONS_REGISTRY = "__AVANTECH_CMS_COLLECTIONS__";
 const CmsContentContext = createContext(null);
 
 function isEditMode() {
@@ -77,6 +80,14 @@ export function useCmsPage(projectSlug, pageSlug) {
   return publishedFields ?? {};
 }
 
+export function useCmsCollection(projectSlug, collectionKey) {
+  const query = isEditMode() ? PREVIEW_COLLECTION_QUERY : PUBLISHED_COLLECTION_QUERY;
+  return useQuery(query, {
+    projectSlug,
+    collectionKey,
+  }) ?? [];
+}
+
 export function CmsContentProvider({
   projectSlug,
   pageSlug,
@@ -104,6 +115,34 @@ export function CmsContentProvider({
       {children}
     </CmsContentContext.Provider>
   );
+}
+
+function toSerializableCollections(collections) {
+  return JSON.parse(JSON.stringify(collections ?? []));
+}
+
+export function CmsCollectionsProvider({ collections = [], children }) {
+  const serializableCollections = useMemo(
+    () => toSerializableCollections(collections),
+    [collections],
+  );
+
+  useEffect(() => {
+    window[COLLECTIONS_REGISTRY] = serializableCollections;
+    window.dispatchEvent(
+      new CustomEvent("cms:collections-changed", {
+        detail: serializableCollections,
+      }),
+    );
+
+    return () => {
+      if (window[COLLECTIONS_REGISTRY] === serializableCollections) {
+        delete window[COLLECTIONS_REGISTRY];
+      }
+    };
+  }, [serializableCollections]);
+
+  return children;
 }
 
 export function CmsText({ fieldId, children }) {

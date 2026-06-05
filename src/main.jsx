@@ -1,6 +1,10 @@
 import React, { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { ConvexProvider, ConvexReactClient } from "convex/react";
+import { ConvexProvider, ConvexReactClient, useMutation, useQuery } from "convex/react";
+import { api } from "../convex/_generated/api.js";
+import { CollectionBrowserPanel } from "./CollectionBrowserPanel.jsx";
+import { CollectionsRailSection } from "./CollectionsRailSection.jsx";
+import { RecordPanel } from "./RecordPanel.jsx";
 import { useCmsProject } from "./hooks/useCmsProject.js";
 import { useFieldManager } from "./hooks/useFieldManager.js";
 import { useIframeMessaging } from "./hooks/useIframeMessaging.js";
@@ -87,6 +91,8 @@ function Cms() {
     previewFields,
     publishedFields,
     draftFieldIds,
+    siteDraftCount,
+    collectionDrafts,
     previewOrigin,
     siteUrl,
     ensureSeedData,
@@ -108,7 +114,10 @@ function Cms() {
   const [railOpen, setRailOpen] = useState(false);
   const [toast, setToast] = useState("");
   const [hint, setHint] = useState(false);
+  const [collections, setCollections] = useState([]);
+  const [selectedCollectionKey, setSelectedCollectionKey] = useState(null);
   const [selectedField, setSelectedField] = useState(null);
+  const [selectedRecord, setSelectedRecord] = useState(null);
   const [pendingPreview, setPendingPreview] = useState(null); // { fieldId, url }
   const [isUploading, setIsUploading] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
@@ -121,8 +130,20 @@ function Cms() {
   const toastTimer = useRef(null);
   const hintTimer = useRef(null);
 
-  const changeCount = draftFieldIds.length;
+  const changeCount = siteDraftCount;
   const draftSignature = draftFieldIds.slice().sort().join("|");
+  const collectionDraftSignature = collectionDrafts
+    .map((draft) => `${draft.collectionKey}:${draft.slug}`)
+    .sort()
+    .join("|");
+  const activeCollectionKey = selectedRecord?.collectionKey ?? selectedCollectionKey;
+  const previewCollectionItems = useQuery(
+    api.cms.listPreviewCollectionItems,
+    activeCollectionKey ? { projectSlug, collectionKey: activeCollectionKey } : "skip",
+  ) ?? [];
+  const saveCollectionItemDraft = useMutation(api.cms.saveCollectionItemDraft);
+  const createCollectionItemDraft = useMutation(api.cms.createCollectionItemDraft);
+  const generateCollectionFileUploadUrl = useMutation(api.cms.generateCollectionFileUploadUrl);
 
   const { iframeRef, send } = useIframeMessaging({
     previewOrigin,
@@ -157,6 +178,12 @@ function Cms() {
         });
       }
     },
+    onCollections: setCollections,
+    onRecordClicked: (collectionKey, itemSlug) => {
+      closeImageCard();
+      setSelectedCollectionKey(null);
+      setSelectedRecord({ collectionKey, itemSlug });
+    },
     onFieldChanged: (fieldId, value) => {
       saveDraftField(fieldId, value);
       showToast("Saved");
@@ -181,12 +208,19 @@ function Cms() {
   }, [draftSignature, send]);
 
   useEffect(() => {
+    send({ type: "cms:set-draft-records", records: collectionDrafts });
+  }, [collectionDraftSignature, send]);
+
+  useEffect(() => {
     ensureSeedData();
   }, [ensureSeedData]);
 
   useEffect(() => {
     resetForProject();
+    setCollections([]);
+    setSelectedCollectionKey(null);
     setSelectedField(null);
+    setSelectedRecord(null);
   }, [projectSlug]);
 
   // Mode → html attribute (drives chrome recede) + iframe affordances + first-run hint.
@@ -329,6 +363,22 @@ function Cms() {
 
   const projectName = project?.name || projectSlug;
   const selectedImageField = selectedField?.kind === "image" ? selectedField : null;
+  const selectedRecordCollection = selectedRecord
+    ? collections.find((collection) => collection.key === selectedRecord.collectionKey)
+    : null;
+  const selectedCollection = selectedCollectionKey
+    ? collections.find((collection) => collection.key === selectedCollectionKey)
+    : null;
+  const selectedRecordData = selectedRecord
+    ? previewCollectionItems.find((item) => item.slug === selectedRecord.itemSlug)?.data
+    : null;
+  const selectedRecordIsDraft = selectedRecord
+    ? collectionDrafts.some(
+        (draft) =>
+          draft.collectionKey === selectedRecord.collectionKey &&
+          draft.slug === selectedRecord.itemSlug,
+      )
+    : false;
   const imageFieldId = selectedImageField?.id ?? null;
   const imageTitle = imageFieldId ? imageFieldTitle(imageFieldId) : "";
   const imageIsDraft = imageFieldId ? draftFieldIds.includes(imageFieldId) : false;
@@ -425,10 +475,16 @@ function Cms() {
           </div>
         </div>
 
-        <div className="railGroup">
-          <div className="railLabel">Collections</div>
-          <div className="railRow muted">No collections yet</div>
-        </div>
+        <CollectionsRailSection
+          collections={collections}
+          draftCollectionKeys={[...new Set(collectionDrafts.map((draft) => draft.collectionKey))]}
+          onSelectCollection={(collectionKey) => {
+            setRailOpen(false);
+            setSelectedField(null);
+            setSelectedRecord(null);
+            setSelectedCollectionKey(collectionKey);
+          }}
+        />
 
         <div className="railGroup">
           <div className="railLabel">Media</div>
@@ -526,6 +582,89 @@ function Cms() {
             onChange={onImageFileChange}
           />
         </aside>
+      )}
+
+      {selectedRecord && mode === "edit" && (
+        <RecordPanel
+          collection={selectedRecordCollection}
+          record={selectedRecord}
+          recordData={selectedRecordData}
+          isDraft={selectedRecordIsDraft}
+          onFieldChange={(path, value) => {
+            // Scalar saves are fire-and-forget; errors surface as a toast, never
+            // an unhandled rejection.
+            saveCollectionItemDraft({
+              projectSlug,
+              collectionKey: selectedRecord.collectionKey,
+              slug: selectedRecord.itemSlug,
+              path,
+              value,
+            })
+              .then(() => showToast("Saved"))
+              .catch((error) => {
+                console.error(error);
+                showToast("Couldn’t save");
+              });
+          }}
+          onUploadFile={async (path, file) => {
+            // Awaitable: the picker shows progress and surfaces failures.
+            const uploadUrl = await generateCollectionFileUploadUrl({
+              projectSlug,
+              collectionKey: selectedRecord.collectionKey,
+              slug: selectedRecord.itemSlug,
+              path,
+            });
+            if (!uploadUrl) throw new Error("Unable to create file upload URL.");
+
+            const response = await fetch(uploadUrl, {
+              method: "POST",
+              headers: { "Content-Type": file.type || "application/octet-stream" },
+              body: file,
+            });
+            if (!response.ok) throw new Error(`File upload failed with status ${response.status}.`);
+
+            const { storageId } = await response.json();
+            if (!storageId) throw new Error("File upload did not return a storage ID.");
+
+            await saveCollectionItemDraft({
+              projectSlug,
+              collectionKey: selectedRecord.collectionKey,
+              slug: selectedRecord.itemSlug,
+              path,
+              value: `convex-storage:${storageId}`,
+            });
+            showToast("Saved");
+          }}
+          onClose={() => setSelectedRecord(null)}
+        />
+      )}
+
+      {selectedCollection && !selectedRecord && mode === "edit" && (
+        <CollectionBrowserPanel
+          collection={selectedCollection}
+          records={previewCollectionItems}
+          draftSlugs={collectionDrafts
+            .filter((draft) => draft.collectionKey === selectedCollection.key)
+            .map((draft) => draft.slug)}
+          onCreate={(slug) => {
+            const data = selectedCollection.defaultItem ?? {};
+            createCollectionItemDraft({
+              projectSlug,
+              collectionKey: selectedCollection.key,
+              slug,
+              data,
+            }).then(() => {
+              setSelectedRecord({ collectionKey: selectedCollection.key, itemSlug: slug });
+              setSelectedCollectionKey(null);
+              showToast("Record saved as draft");
+            });
+          }}
+          onSelectRecord={(slug) => {
+            setSelectedRecord({ collectionKey: selectedCollection.key, itemSlug: slug });
+            setSelectedCollectionKey(null);
+          }}
+          onClose={() => setSelectedCollectionKey(null)}
+        />
       )}
 
       {/* Toast + first-run hint */}

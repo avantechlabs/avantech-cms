@@ -1,12 +1,21 @@
 import { useCallback, useEffect, useRef } from "react";
-import type { CmsToSiteMessage, FieldData, SiteToCmsMessage } from "../messages.js";
+import type {
+  CmsToSiteMessage,
+  CollectionDefinition,
+  FieldData,
+  RecordRegionData,
+  SiteToCmsMessage,
+} from "../messages.js";
 
 interface UseIframeMessagingOptions {
   previewOrigin: string;
   projectSlug: string;
   onReady: () => void;
   onFields: (fields: FieldData[]) => void;
+  onCollections?: (collections: CollectionDefinition[]) => void;
+  onRecords?: (records: RecordRegionData[]) => void;
   onFieldClicked: (fieldId: string, kind: FieldData["kind"]) => void;
+  onRecordClicked?: (collectionKey: string, itemSlug: string) => void;
   onFieldChanged: (fieldId: string, value: string) => void;
   onEditing: (fieldId: string | null) => void;
 }
@@ -57,7 +66,11 @@ export function useIframeMessaging(options: UseIframeMessagingOptions) {
         }
         h.onReady();
       } else if (message.type === "cms:fields") h.onFields(message.fields);
+      else if (message.type === "cms:collections") h.onCollections?.(message.collections);
+      else if (message.type === "cms:records") h.onRecords?.(message.records);
       else if (message.type === "cms:field-clicked") h.onFieldClicked(message.fieldId, message.kind);
+      else if (message.type === "cms:record-clicked")
+        h.onRecordClicked?.(message.collectionKey, message.itemSlug);
       else if (message.type === "cms:field-changed") h.onFieldChanged(message.fieldId, message.value);
       else if (message.type === "cms:editing") h.onEditing(message.fieldId);
     }

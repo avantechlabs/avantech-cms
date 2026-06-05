@@ -59,6 +59,40 @@ test("bridge discovers image fields from src and text fields from text content",
   );
 });
 
+test("bridge discovers record regions with collection key, item slug, and geometry", () => {
+  document.body.innerHTML = `
+    <article data-cms-record="projects:brand-refresh">
+      <h2>Brand refresh</h2>
+    </article>
+  `;
+  const record = document.querySelector("[data-cms-record]");
+  record.getBoundingClientRect = () => ({
+    left: 10,
+    top: 20,
+    width: 300,
+    height: 120,
+    right: 310,
+    bottom: 140,
+    x: 10,
+    y: 20,
+    toJSON: () => {},
+  });
+
+  installBridge();
+
+  const recordsMessage = postedMessages
+    .filter(({ message }) => message.type === "cms:records")
+    .at(-1);
+  expect(recordsMessage.origin).toBe(parentOrigin);
+  expect(recordsMessage.message.records).toEqual([
+    {
+      collectionKey: "projects",
+      itemSlug: "brand-refresh",
+      rect: { left: 10, top: 20, width: 300, height: 120 },
+    },
+  ]);
+});
+
 test("bridge reports image field clicks with image kind", () => {
   document.body.innerHTML = `<img data-cms-field="hero.image" src="/images/static-hero.jpg" alt="">`;
   installBridge();
@@ -75,6 +109,116 @@ test("bridge reports image field clicks with image kind", () => {
       kind: "image",
     },
   });
+});
+
+test("bridge reports clicks inside record regions", () => {
+  document.body.innerHTML = `
+    <article data-cms-record="projects:brand-refresh">
+      <button>Open project</button>
+    </article>
+  `;
+  installBridge();
+
+  document.querySelector("button").dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+
+  expect(postedMessages).toContainEqual({
+    origin: parentOrigin,
+    message: {
+      type: "cms:record-clicked",
+      collectionKey: "projects",
+      itemSlug: "brand-refresh",
+    },
+  });
+});
+
+test("record regions take priority over nested editable fields", () => {
+  document.body.innerHTML = `
+    <article data-cms-record="projects:brand-refresh">
+      <h2 data-cms-field="projects.brand-refresh.card.title">Brand refresh</h2>
+    </article>
+  `;
+  installBridge();
+
+  document
+    .querySelector('[data-cms-field="projects.brand-refresh.card.title"]')
+    .dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+
+  expect(postedMessages).toContainEqual({
+    origin: parentOrigin,
+    message: {
+      type: "cms:record-clicked",
+      collectionKey: "projects",
+      itemSlug: "brand-refresh",
+    },
+  });
+  expect(postedMessages).not.toContainEqual({
+    origin: parentOrigin,
+    message: {
+      type: "cms:field-clicked",
+      fieldId: "projects.brand-refresh.card.title",
+      kind: "text",
+    },
+  });
+  expect(postedMessages).not.toContainEqual({
+    origin: parentOrigin,
+    message: {
+      type: "cms:editing",
+      fieldId: "projects.brand-refresh.card.title",
+    },
+  });
+});
+
+test("standalone page fields outside records remain inline editable", () => {
+  document.body.innerHTML = `<h1 data-cms-field="hero.title">Static title</h1>`;
+  installBridge();
+
+  document
+    .querySelector('[data-cms-field="hero.title"]')
+    .dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+
+  expect(document.querySelector('[data-cms-field="hero.title"]').contentEditable).toBe(
+    "plaintext-only",
+  );
+  expect(postedMessages).toContainEqual({
+    origin: parentOrigin,
+    message: {
+      type: "cms:field-clicked",
+      fieldId: "hero.title",
+      kind: "text",
+    },
+  });
+  expect(postedMessages).toContainEqual({
+    origin: parentOrigin,
+    message: {
+      type: "cms:editing",
+      fieldId: "hero.title",
+    },
+  });
+});
+
+test("bridge marks rendered records with unpublished drafts", () => {
+  document.body.innerHTML = `
+    <article data-cms-record="projects:brand-refresh">Brand refresh</article>
+    <article data-cms-record="projects:launch-film">Launch film</article>
+  `;
+  installBridge();
+
+  window.dispatchEvent(
+    new MessageEvent("message", {
+      origin: parentOrigin,
+      data: {
+        type: "cms:set-draft-records",
+        records: [{ collectionKey: "projects", slug: "brand-refresh" }],
+      },
+    }),
+  );
+
+  expect(document.querySelector('[data-cms-record="projects:brand-refresh"]').classList).toContain(
+    "cms-draft-record",
+  );
+  expect(document.querySelector('[data-cms-record="projects:launch-film"]').classList).not.toContain(
+    "cms-draft-record",
+  );
 });
 
 test("bridge applies image field values to src and text field values to textContent", () => {

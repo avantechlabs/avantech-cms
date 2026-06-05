@@ -385,8 +385,10 @@ html[data-mode="view"] .bottomBar {
 .imageDrop:hover .imageDropHint,
 .imageDrop.drag .imageDropHint,
 .imageDrop.uploading .imageDropHint,
-.imageDrop:focus-visible .imageDropHint { opacity: 1; }
-.imageDrop:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+.imageDrop:focus-visible .imageDropHint,
+.imageDrop:focus-within .imageDropHint { opacity: 1; }
+.imageDrop:focus-visible,
+.imageDrop:focus-within { outline: 2px solid var(--gold); outline-offset: 2px; }
 .imageDropHint .spinner {
   display: inline-block;
   vertical-align: -2px;
@@ -424,6 +426,248 @@ html[data-mode="view"] .bottomBar {
 
 .imageCardActions { display: flex; gap: var(--s-2); }
 .imageCardActions .primary { flex: 1; justify-content: center; }
+
+.recordPanel {
+  position: fixed;
+  right: var(--s-5);
+  top: 96px;
+  bottom: 112px;
+  width: min(440px, calc(100vw - 32px));
+  z-index: 38;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+  padding: var(--s-5);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow-xl);
+  animation: cms-panel-in var(--dur-panel) var(--ease) both;
+}
+@keyframes cms-panel-in {
+  from { opacity: 0; transform: translateX(12px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+.recordPanelHead {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--s-4);
+}
+.recordPanelMeta {
+  display: grid;
+  gap: var(--s-1);
+  min-width: 0;
+}
+.recordPanelEyebrow {
+  font-family: var(--font-meta);
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+/* Draft-vs-live legibility, shared with the image card: draft spends amber,
+   published recedes to muted. */
+.recordStatus {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.recordStatus .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--text-dim); flex-shrink: 0; }
+.recordStatus.draft { color: var(--draft-ink); font-weight: 500; }
+.recordStatus.draft .dot { background: var(--draft); }
+.recordPanelTitle {
+  color: var(--text);
+  font-size: 20px;
+  font-weight: 650;
+  overflow-wrap: anywhere;
+}
+.recordPanelBody {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+.recordPanelEmpty {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 14px;
+}
+.recordFieldGroup {
+  display: grid;
+  gap: var(--s-3);
+  margin-bottom: var(--s-5);
+}
+.recordFieldGroup h3 {
+  margin: 0;
+  color: var(--text);
+  font-size: 15px;
+  line-height: 1.3;
+}
+.recordField {
+  display: grid;
+  gap: var(--s-2);
+  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 500;
+}
+.recordField input,
+.recordField textarea,
+.recordField select {
+  width: 100%;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+  color: var(--text);
+  font: inherit;
+  font-size: 14px;
+  line-height: 1.45;
+  padding: 10px 11px;
+}
+.recordField textarea {
+  min-height: 108px;
+  resize: vertical;
+}
+.recordField select[multiple] {
+  min-height: 96px;
+}
+.recordFieldCheckbox {
+  display: flex;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+}
+.recordFieldCheckbox input {
+  width: 18px;
+  height: 18px;
+}
+.recordField input:focus,
+.recordField textarea:focus,
+.recordField select:focus {
+  outline: none;
+  border-color: var(--gold);
+  box-shadow: 0 0 0 3px var(--gold-ring);
+}
+.recordFieldUnsupported {
+  border: 1px solid var(--danger);
+  border-radius: var(--r-md);
+  color: var(--danger);
+  font-size: 13px;
+  padding: 10px 11px;
+}
+.recordMediaPreview {
+  width: 100%;
+  max-height: 180px;
+  object-fit: cover;
+  border-radius: var(--r-md);
+  border: 1px solid var(--line);
+}
+/* Record media field — same dropzone language as the page image picker. */
+.recordMediaField { gap: var(--s-3); }
+.recordMediaDrop.fileKind {
+  aspect-ratio: auto;
+  min-height: 88px;
+}
+.recordFileName {
+  padding: 0 var(--s-4);
+  font-size: 13px;
+  color: var(--text-2);
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+.recordMediaNote {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.visuallyHidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+.recordNestedGroup,
+.recordListField,
+.recordListItem {
+  display: grid;
+  gap: var(--s-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  padding: var(--s-3);
+}
+.recordNestedGroup legend,
+.recordListHead,
+.recordListItemHead {
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 650;
+}
+.recordListHead,
+.recordListItemHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-2);
+}
+.recordListActions {
+  display: flex;
+  gap: var(--s-1);
+}
+.collectionRecordList {
+  display: grid;
+  gap: var(--s-2);
+}
+.collectionRecordRow {
+  display: flex;
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+  padding: 10px 11px;
+  text-align: left;
+}
+.collectionRecordRow {
+  align-items: center;
+  gap: var(--s-2);
+  transition: border-color var(--dur-fast) var(--ease), background var(--dur-fast) var(--ease);
+}
+.collectionRecordRow:hover {
+  border-color: var(--line-strong);
+  background: var(--surface-3);
+}
+.collectionRecordRow:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 2px;
+}
+.collectionRecordRow .draftDot { margin-left: auto; }
+.createRecordForm {
+  display: grid;
+  gap: var(--s-3);
+  margin-top: auto;
+  padding-top: var(--s-4);
+  border-top: 1px solid var(--line);
+}
+.createRecordLabel {
+  font-family: var(--font-meta);
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.recordPanelActions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: auto;
+}
 
 .fileInput {
   display: none;
@@ -511,10 +755,15 @@ html[data-mode="view"] .railTab { opacity: 0; pointer-events: none; }
   display: flex;
   align-items: center;
   gap: var(--s-2);
+  width: 100%;
   padding: 9px var(--s-3);
+  border: 0;
+  background: transparent;
   border-radius: var(--r-md);
+  font: inherit;
   font-size: 14px;
   color: var(--text-2);
+  text-align: left;
   cursor: pointer;
   transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
 }

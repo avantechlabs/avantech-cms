@@ -15,6 +15,10 @@ export function useCmsProject(projectSlug: string) {
     api.cms.getPage,
     project ? { projectSlug, pageSlug: PAGE_SLUG } : "skip",
   );
+  const siteDraftState = useQuery(
+    api.cms.getSiteDraftState,
+    project ? { projectSlug, pageSlug: PAGE_SLUG } : "skip",
+  );
 
   const publishedFields = page?.publishedFields ?? {};
   const draftFields = page?.draftFields ?? {};
@@ -45,6 +49,8 @@ export function useCmsProject(projectSlug: string) {
     publishedFields,
     previewFields,
     draftFieldIds,
+    siteDraftCount: siteDraftState?.totalDraftCount ?? draftFieldIds.length,
+    collectionDrafts: siteDraftState?.collectionDrafts ?? [],
     previewOrigin,
     siteUrl,
     ensureSeedData,

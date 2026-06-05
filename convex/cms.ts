@@ -21,7 +21,59 @@ const SEEDED_PROJECTS = [
   },
 ];
 
+// Demo collection records so the collections editor has something to render
+// and click out of the box. Seeded as published; insert-if-missing so re-runs
+// never clobber owner edits.
+const SEEDED_COLLECTIONS: Record<string, Record<string, { slug: string; data: unknown }[]>> = {
+  "project-b": {
+    caseStudies: [
+      {
+        slug: "northgate-group",
+        data: {
+          title: "Northgate closes 3× faster",
+          client: "Northgate Group",
+          industry: "Finance",
+          summary:
+            "A 47-page supply agreement that used to take three weeks of email redlines now closes in two days, with every clause auditable.",
+          cover: "/images/sable-contract-workspace.png",
+          featured: true,
+        },
+      },
+      {
+        slug: "meridian-health",
+        data: {
+          title: "Meridian standardizes 200 contracts",
+          client: "Meridian Health",
+          industry: "Healthcare",
+          summary:
+            "Meridian's legal team rebuilt its clause library in Sable and brought 200 vendor contracts onto one approved standard.",
+          cover: "/images/sable-contract-workspace.png",
+          featured: false,
+        },
+      },
+      {
+        slug: "lumen-retail",
+        data: {
+          title: "Lumen cuts review time 70%",
+          client: "Lumen Retail",
+          industry: "Retail",
+          summary:
+            "Automated risk flagging let Lumen's two-person legal team keep pace with a fast-scaling store-rollout pipeline.",
+          cover: "/images/sable-contract-workspace.png",
+          featured: false,
+        },
+      },
+    ],
+  },
+};
+
 const fieldsValidator = v.record(v.string(), v.string());
+const collectionItemsValidator = v.array(
+  v.object({
+    slug: v.string(),
+    data: v.any(),
+  }),
+);
 const discoveredFieldsValidator = v.array(
   v.object({
     id: v.string(),
@@ -63,6 +115,63 @@ async function getContentForPage(
       q.eq("projectId", projectId).eq("pageId", pageId),
     )
     .unique();
+}
+
+async function getCollectionItem(
+  ctx: QueryCtx | MutationCtx,
+  projectId: Id<"projects">,
+  collectionKey: string,
+  slug: string,
+): Promise<Doc<"collectionItems"> | null> {
+  return await ctx.db
+    .query("collectionItems")
+    .withIndex("by_projectId_and_collectionKey_and_slug", (q) =>
+      q.eq("projectId", projectId).eq("collectionKey", collectionKey).eq("slug", slug),
+    )
+    .unique();
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function setAtPath(source: unknown, path: string, value: unknown): Record<string, unknown> {
+  const keys = path.split(".").filter(Boolean);
+  if (keys.length === 0) throw new Error("Collection draft path must not be empty.");
+
+  const root: Record<string, unknown> = isRecord(source) ? { ...source } : {};
+  let cursor = root;
+  for (const key of keys.slice(0, -1)) {
+    const next = cursor[key];
+    const nextRecord = isRecord(next) ? { ...next } : {};
+    cursor[key] = nextRecord;
+    cursor = nextRecord;
+  }
+  cursor[keys[keys.length - 1]] = value;
+
+  return root;
+}
+
+function mergeDraftOverPublished(published: unknown, draft: unknown): unknown {
+  if (!isRecord(published) || !isRecord(draft)) return draft ?? published;
+
+  const merged: Record<string, unknown> = { ...published };
+  for (const [key, value] of Object.entries(draft)) {
+    merged[key] = mergeDraftOverPublished(merged[key], value);
+  }
+  return merged;
+}
+
+function valuesEqual(a: unknown, b: unknown) {
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+
+function hasMeaningfulCollectionDraft(item: Doc<"collectionItems">) {
+  if (item.draftData === undefined) return false;
+  return !valuesEqual(
+    mergeDraftOverPublished(item.publishedData, item.draftData),
+    item.publishedData,
+  );
 }
 
 function storageIdFromFieldValue(value: string): Id<"_storage"> | null {
@@ -110,6 +219,27 @@ async function resolveStorageFieldMap(
   );
 
   return resolvedFields;
+}
+
+async function resolveStorageInValue(
+  ctx: QueryCtx,
+  value: unknown,
+  cache = new Map<string, string | null>(),
+): Promise<unknown> {
+  if (typeof value === "string") return await resolveStorageFieldValue(ctx, value, cache);
+  if (Array.isArray(value)) {
+    return await Promise.all(value.map((item) => resolveStorageInValue(ctx, item, cache)));
+  }
+  if (isRecord(value)) {
+    const entries = await Promise.all(
+      Object.entries(value).map(async ([key, nested]) => [
+        key,
+        await resolveStorageInValue(ctx, nested, cache),
+      ]),
+    );
+    return Object.fromEntries(entries);
+  }
+  return value;
 }
 
 async function requireContent(
@@ -199,6 +329,25 @@ export const ensureSeedData = mutation({
           updatedAt: now,
         });
       }
+
+      const seededCollections = SEEDED_COLLECTIONS[seed.slug];
+      if (seededCollections) {
+        for (const [collectionKey, items] of Object.entries(seededCollections)) {
+          for (const item of items) {
+            const existing = await getCollectionItem(ctx, project._id, collectionKey, item.slug);
+            if (!existing) {
+              await ctx.db.insert("collectionItems", {
+                projectId: project._id,
+                collectionKey,
+                slug: item.slug,
+                publishedData: item.data,
+                publishedAt: now,
+                updatedAt: now,
+              });
+            }
+          }
+        }
+      }
     }
 
     return null;
@@ -273,6 +422,327 @@ export const getPreviewContent = query({
       ...result.content.publishedFields,
       ...result.content.draftFields,
     });
+  },
+});
+
+export const seedPublishedCollectionItems = mutation({
+  args: {
+    projectSlug: v.string(),
+    collectionKey: v.string(),
+    items: collectionItemsValidator,
+  },
+  handler: async (ctx, args) => {
+    const project = await getProject(ctx, args.projectSlug);
+    if (!project) return null;
+
+    const now = Date.now();
+    const records = [];
+    for (const item of args.items) {
+      const existing = await getCollectionItem(
+        ctx,
+        project._id,
+        args.collectionKey,
+        item.slug,
+      );
+      if (existing) {
+        await ctx.db.patch(existing._id, {
+          publishedData: item.data,
+          publishedAt: now,
+          updatedAt: now,
+        });
+      } else {
+        await ctx.db.insert("collectionItems", {
+          projectId: project._id,
+          collectionKey: args.collectionKey,
+          slug: item.slug,
+          publishedData: item.data,
+          publishedAt: now,
+          updatedAt: now,
+        });
+      }
+      records.push({ slug: item.slug, data: item.data });
+    }
+
+    return records;
+  },
+});
+
+export const listPublishedCollectionItems = query({
+  args: {
+    projectSlug: v.string(),
+    collectionKey: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const project = await getProject(ctx, args.projectSlug);
+    if (!project) return [];
+
+    const items = await ctx.db
+      .query("collectionItems")
+      .withIndex("by_projectId_and_collectionKey", (q) =>
+        q.eq("projectId", project._id).eq("collectionKey", args.collectionKey),
+      )
+      .take(200);
+
+    const storageUrlCache = new Map<string, string | null>();
+    const publishedItems = items
+      .filter((item) => item.publishedData !== undefined)
+      .map((item) => ({
+        slug: item.slug,
+        data: item.publishedData,
+      }));
+
+    return await Promise.all(
+      publishedItems.map(async (item) => ({
+        slug: item.slug,
+        data: await resolveStorageInValue(ctx, item.data, storageUrlCache),
+      })),
+    );
+  },
+});
+
+export const createCollectionItemDraft = mutation({
+  args: {
+    projectSlug: v.string(),
+    collectionKey: v.string(),
+    slug: v.string(),
+    data: v.any(),
+  },
+  handler: async (ctx, args) => {
+    const project = await getProject(ctx, args.projectSlug);
+    if (!project) return null;
+
+    const existing = await getCollectionItem(
+      ctx,
+      project._id,
+      args.collectionKey,
+      args.slug,
+    );
+    const now = Date.now();
+    if (existing) {
+      await ctx.db.patch(existing._id, {
+        draftData: args.data,
+        draftUpdatedAt: now,
+        updatedAt: now,
+      });
+    } else {
+      await ctx.db.insert("collectionItems", {
+        projectId: project._id,
+        collectionKey: args.collectionKey,
+        slug: args.slug,
+        draftData: args.data,
+        draftUpdatedAt: now,
+        updatedAt: now,
+      });
+    }
+
+    return { slug: args.slug, data: args.data };
+  },
+});
+
+export const generateCollectionFileUploadUrl = mutation({
+  args: {
+    projectSlug: v.string(),
+    collectionKey: v.string(),
+    slug: v.string(),
+    path: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const project = await getProject(ctx, args.projectSlug);
+    if (!project) return null;
+
+    const item = await getCollectionItem(
+      ctx,
+      project._id,
+      args.collectionKey,
+      args.slug,
+    );
+    if (!item) return null;
+
+    return await ctx.storage.generateUploadUrl();
+  },
+});
+
+export const saveCollectionItemDraft = mutation({
+  args: {
+    projectSlug: v.string(),
+    collectionKey: v.string(),
+    slug: v.string(),
+    path: v.string(),
+    value: v.any(),
+  },
+  handler: async (ctx, args) => {
+    const project = await getProject(ctx, args.projectSlug);
+    if (!project) return null;
+
+    const item = await getCollectionItem(
+      ctx,
+      project._id,
+      args.collectionKey,
+      args.slug,
+    );
+    if (!item) return null;
+
+    const draftData = setAtPath(item.draftData, args.path, args.value);
+    await ctx.db.patch(item._id, {
+      draftData,
+      draftUpdatedAt: Date.now(),
+      updatedAt: Date.now(),
+    });
+
+    return {
+      slug: item.slug,
+      data: mergeDraftOverPublished(item.publishedData, draftData),
+    };
+  },
+});
+
+export const listPreviewCollectionItems = query({
+  args: {
+    projectSlug: v.string(),
+    collectionKey: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const project = await getProject(ctx, args.projectSlug);
+    if (!project) return [];
+
+    const items = await ctx.db
+      .query("collectionItems")
+      .withIndex("by_projectId_and_collectionKey", (q) =>
+        q.eq("projectId", project._id).eq("collectionKey", args.collectionKey),
+      )
+      .take(200);
+
+    const storageUrlCache = new Map<string, string | null>();
+    return await Promise.all(
+      items.map(async (item) => ({
+        slug: item.slug,
+        data: await resolveStorageInValue(
+          ctx,
+          mergeDraftOverPublished(item.publishedData, item.draftData),
+          storageUrlCache,
+        ),
+      })),
+    );
+  },
+});
+
+export const getSiteDraftState = query({
+  args: {
+    projectSlug: v.string(),
+    pageSlug: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const result = await requireContent(ctx, args.projectSlug, args.pageSlug);
+    if (!result) {
+      return {
+        pageDraftFieldIds: [],
+        collectionDrafts: [],
+        collectionDraftCount: 0,
+        totalDraftCount: 0,
+      };
+    }
+
+    const draftFields = result.content?.draftFields ?? {};
+    const publishedFields = result.content?.publishedFields ?? {};
+    const pageDraftFieldIds = Object.keys(draftFields)
+      .filter((fieldId) => draftFields[fieldId] !== publishedFields[fieldId])
+      .sort();
+
+    const collectionItems = await ctx.db
+      .query("collectionItems")
+      .withIndex("by_projectId", (q) => q.eq("projectId", result.project._id))
+      .take(500);
+    const collectionDrafts = collectionItems
+      .filter(hasMeaningfulCollectionDraft)
+      .map((item) => ({
+        collectionKey: item.collectionKey,
+        slug: item.slug,
+      }))
+      .sort((a, b) =>
+        `${a.collectionKey}:${a.slug}`.localeCompare(`${b.collectionKey}:${b.slug}`),
+      );
+
+    return {
+      pageDraftFieldIds,
+      collectionDrafts,
+      collectionDraftCount: collectionDrafts.length,
+      totalDraftCount: pageDraftFieldIds.length + collectionDrafts.length,
+    };
+  },
+});
+
+export const publishSite = mutation({
+  args: {
+    projectSlug: v.string(),
+    pageSlug: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const result = await requireContent(ctx, args.projectSlug, args.pageSlug);
+    if (!result) return null;
+
+    const draftFields = result.content?.draftFields ?? {};
+    const publishedFields = {
+      ...(result.content?.publishedFields ?? {}),
+      ...draftFields,
+    };
+    await upsertPageContent(ctx, result.project._id, result.page._id, result.content, {
+      draftFields: {},
+      publishedFields,
+      publishedAt: Date.now(),
+    });
+
+    const collectionItems = await ctx.db
+      .query("collectionItems")
+      .withIndex("by_projectId", (q) => q.eq("projectId", result.project._id))
+      .take(500);
+    const now = Date.now();
+    for (const item of collectionItems) {
+      if (item.draftData === undefined) continue;
+      await ctx.db.patch(item._id, {
+        publishedData: mergeDraftOverPublished(item.publishedData, item.draftData),
+        draftData: undefined,
+        draftUpdatedAt: undefined,
+        publishedAt: now,
+        updatedAt: now,
+      });
+    }
+
+    return null;
+  },
+});
+
+export const discardSiteDrafts = mutation({
+  args: {
+    projectSlug: v.string(),
+    pageSlug: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const result = await requireContent(ctx, args.projectSlug, args.pageSlug);
+    if (!result) return null;
+
+    await upsertPageContent(ctx, result.project._id, result.page._id, result.content, {
+      draftFields: {},
+    });
+
+    const collectionItems = await ctx.db
+      .query("collectionItems")
+      .withIndex("by_projectId", (q) => q.eq("projectId", result.project._id))
+      .take(500);
+    const now = Date.now();
+    for (const item of collectionItems) {
+      if (item.draftData === undefined) continue;
+      if (item.publishedData === undefined) {
+        await ctx.db.delete(item._id);
+        continue;
+      }
+      await ctx.db.patch(item._id, {
+        draftData: undefined,
+        draftUpdatedAt: undefined,
+        updatedAt: now,
+      });
+    }
+
+    return null;
   },
 });
 

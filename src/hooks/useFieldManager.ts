@@ -16,8 +16,8 @@ export function useFieldManager(projectSlug: string) {
   const seedDiscoveredFields = useMutation(api.cms.seedDiscoveredFields);
   const generateImageUploadUrl = useMutation(api.cms.generateImageUploadUrl);
   const saveDraft = useMutation(api.cms.saveDraft);
-  const publishPage = useMutation(api.cms.publishPage);
-  const discardDrafts = useMutation(api.cms.discardDrafts);
+  const publishSite = useMutation(api.cms.publishSite);
+  const discardSiteDrafts = useMutation(api.cms.discardSiteDrafts);
 
   function saveDraftField(fieldId: string, value: string) {
     setSaveState("saving");
@@ -66,13 +66,13 @@ export function useFieldManager(projectSlug: string) {
   function publish() {
     setSaveState("publishing");
     return pendingSaveRef.current
-      .then(() => publishPage({ projectSlug, pageSlug: PAGE_SLUG }))
+      .then(() => publishSite({ projectSlug, pageSlug: PAGE_SLUG }))
       .then(() => setSaveState("published"));
   }
 
   function discard() {
     return pendingSaveRef.current.then(() =>
-      discardDrafts({ projectSlug, pageSlug: PAGE_SLUG }),
+      discardSiteDrafts({ projectSlug, pageSlug: PAGE_SLUG }),
     );
   }
 
