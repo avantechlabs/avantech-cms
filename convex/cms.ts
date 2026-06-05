@@ -199,7 +199,7 @@ function storageIdFromFieldValue(value: string): Id<"_storage"> | null {
 }
 
 async function resolveStorageFieldValue(
-  ctx: QueryCtx,
+  ctx: QueryCtx | MutationCtx,
   value: string,
   cache: Map<string, string | null>,
 ) {
@@ -224,7 +224,7 @@ async function resolveStorageFieldValue(
 }
 
 async function resolveStorageFieldMap(
-  ctx: QueryCtx,
+  ctx: QueryCtx | MutationCtx,
   fields: Record<string, string>,
   cache = new Map<string, string | null>(),
 ) {
@@ -940,10 +940,10 @@ export const seedDiscoveredFields = mutation({
       });
     }
 
-    return {
+    return await resolveStorageFieldMap(ctx, {
       ...publishedFields,
       ...draftFields,
-    };
+    });
   },
 });
 

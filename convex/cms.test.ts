@@ -183,6 +183,38 @@ test("image discovery seeds only missing published values without replacing draf
   expect(storedContent.draftFields["hero.image"]).toBe("/images/draft-hero.jpg");
 });
 
+test("image discovery returns resolved storage URLs for iframe rehydration", async () => {
+  const t = convexTest(schema, modules);
+  await t.mutation(api.cms.ensureSeedData);
+
+  const draftStorageId = await storeImage(t, "draft image");
+  const draftCanonicalValue = `convex-storage:${draftStorageId}`;
+  await t.mutation(api.cms.seedDiscoveredFields, {
+    projectSlug,
+    pageSlug,
+    fields: [{ id: "hero.image", value: "/images/static-hero.jpg" }],
+  });
+  await t.mutation(api.cms.saveDraft, {
+    projectSlug,
+    pageSlug,
+    fields: { "hero.image": draftCanonicalValue },
+  });
+
+  const seeded = await t.mutation(api.cms.seedDiscoveredFields, {
+    projectSlug,
+    pageSlug,
+    fields: [{ id: "hero.image", value: "/images/static-hero.jpg" }],
+  });
+  const storedContent = await getStoredPageContent(t);
+  const draftUrl = await t.run(async (ctx) => {
+    return await ctx.storage.getUrl(draftStorageId);
+  });
+
+  expect(seeded?.["hero.image"]).toBe(draftUrl);
+  expect(seeded?.["hero.image"]).not.toBe(draftCanonicalValue);
+  expect(storedContent.draftFields["hero.image"]).toBe(draftCanonicalValue);
+});
+
 test("image upload flow saves a canonical draft while public output stays published", async () => {
   const t = convexTest(schema, modules);
   await t.mutation(api.cms.ensureSeedData);
