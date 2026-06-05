@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { recordTitle, slugify } from "./humanize.js";
 
 export function CollectionBrowserPanel({
   collection,
@@ -8,16 +9,17 @@ export function CollectionBrowserPanel({
   onSelectRecord,
   onClose,
 }) {
-  const [slug, setSlug] = useState("");
+  const [name, setName] = useState("");
   const draftSlugSet = new Set(draftSlugs);
   if (!collection) return null;
 
+  const nextSlug = slugify(name);
+
   function submit(event) {
     event.preventDefault();
-    const nextSlug = slug.trim();
     if (!nextSlug) return;
     onCreate(nextSlug);
-    setSlug("");
+    setName("");
   }
 
   return (
@@ -44,7 +46,7 @@ export function CollectionBrowserPanel({
                 onClick={() => onSelectRecord(record.slug)}
                 type="button"
               >
-                <span>{record.slug}</span>
+                <span>{recordTitle(collection, record.slug, record.data)}</span>
                 {draftSlugSet.has(record.slug) && <span className="draftDot" />}
               </button>
             ))
@@ -55,11 +57,16 @@ export function CollectionBrowserPanel({
       </div>
 
       <form className="createRecordForm" onSubmit={submit}>
+        <span className="createRecordLabel">Add to {collection.label}</span>
         <label className="recordField">
-          <span>New record slug</span>
-          <input value={slug} onChange={(event) => setSlug(event.target.value)} />
+          <span>Name</span>
+          <input
+            value={name}
+            placeholder="e.g. Brand refresh"
+            onChange={(event) => setName(event.target.value)}
+          />
         </label>
-        <button className="barBtn primary" type="submit">Create</button>
+        <button className="barBtn primary" type="submit" disabled={!nextSlug}>Create</button>
       </form>
     </aside>
   );

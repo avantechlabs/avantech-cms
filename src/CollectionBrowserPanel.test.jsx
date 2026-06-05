@@ -23,8 +23,8 @@ test("renders collection records and a create form", () => {
   );
 
   expect(html).toContain("Projects");
-  expect(html).toContain("brand-refresh");
-  expect(html).toContain("New record slug");
+  expect(html).toContain("Brand refresh");
+  expect(html).toContain("Name");
   expect(html).toContain("Create");
 });
 

@@ -22,7 +22,7 @@ test("renders a selected collection record in a Done-style panel", () => {
   );
 
   expect(html).toContain("Projects");
-  expect(html).toContain("brand-refresh");
+  expect(html).toContain("Brand refresh");
   expect(html).toContain("No editable fields yet.");
   expect(html).toContain("Done");
   expect(html).not.toContain("Save");
@@ -146,7 +146,7 @@ test("renders scalar controls from field definitions", () => {
   expect(html).toContain('type="color"');
   expect(html).toContain('accept="image/*"');
   expect(html).toContain("/cover.jpg");
-  expect(html).toContain("/brief.pdf");
+  expect(html).toContain("brief.pdf");
   expect(html).toContain("Unsupported field type: relationship");
 });
 

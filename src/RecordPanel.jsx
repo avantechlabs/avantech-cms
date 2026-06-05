@@ -1,4 +1,159 @@
-import React from "react";
+import React, { useEffect, useRef, useState } from "react";
+import { getAtPath, humanizeFieldLabel, recordTitle } from "./humanize.js";
+
+const MAX_FILE_BYTES = 10 * 1024 * 1024;
+
+function fileBasename(value) {
+  const clean = String(value).split(/[?#]/)[0];
+  const last = clean.split("/").pop();
+  return last || String(value);
+}
+
+// A media field that matches the page image picker: a dropzone (click +
+// drag-drop), optimistic preview, inline validation, and upload progress.
+// Upload is awaitable via onUpload(path, file); scalar saves go elsewhere.
+function MediaField({ field, value, onUpload, uploadable = true }) {
+  const isImage = (field.type ?? "text") === "image";
+  const label = field.label ?? humanizeFieldLabel(field.path);
+  const stringValue = value == null ? "" : String(value);
+
+  const [isUploading, setUploading] = useState(false);
+  const [isDragging, setDragging] = useState(false);
+  const [error, setError] = useState(null);
+  const [pendingPreview, setPendingPreview] = useState(null);
+  const pendingUrlRef = useRef(null);
+  const seqRef = useRef(0);
+  const awaitingValueRef = useRef(false);
+
+  function revoke() {
+    if (pendingUrlRef.current) {
+      URL.revokeObjectURL(pendingUrlRef.current);
+      pendingUrlRef.current = null;
+    }
+  }
+  useEffect(() => () => revoke(), []);
+
+  // Once the saved (non-blob) value lands after a successful upload, drop the
+  // optimistic object URL and show the resolved one.
+  useEffect(() => {
+    if (!awaitingValueRef.current) return;
+    if (stringValue && !stringValue.startsWith("blob:")) {
+      awaitingValueRef.current = false;
+      revoke();
+      setPendingPreview(null);
+    }
+  }, [stringValue]);
+
+  function handleFile(file) {
+    if (!file || isUploading || !onUpload) return;
+    setError(null);
+    if (isImage && !file.type.startsWith("image/")) {
+      setError("That file isn’t an image.");
+      return;
+    }
+    if (file.size > MAX_FILE_BYTES) {
+      setError("That file is over 10 MB — try a smaller one.");
+      return;
+    }
+
+    const seq = ++seqRef.current;
+    if (isImage) {
+      revoke();
+      const url = URL.createObjectURL(file);
+      pendingUrlRef.current = url;
+      setPendingPreview(url);
+    }
+    setUploading(true);
+    Promise.resolve(onUpload(field.path, file))
+      .then(() => {
+        if (seq !== seqRef.current) return;
+        setUploading(false);
+        awaitingValueRef.current = true;
+      })
+      .catch((uploadError) => {
+        if (seq !== seqRef.current) return;
+        setUploading(false);
+        setError("Upload failed — please try again.");
+        revoke();
+        setPendingPreview(null);
+        console.error(uploadError);
+      });
+  }
+
+  function onInput(event) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (file) handleFile(file);
+  }
+  function onDragOver(event) {
+    if (!onUpload || isUploading) return;
+    event.preventDefault();
+    setDragging(true);
+  }
+  function onDragLeave(event) {
+    event.preventDefault();
+    setDragging(false);
+  }
+  function onDrop(event) {
+    if (!onUpload || isUploading) return;
+    event.preventDefault();
+    setDragging(false);
+    const file = event.dataTransfer?.files?.[0];
+    if (file) handleFile(file);
+  }
+
+  if (!uploadable) {
+    return (
+      <div className="recordField recordMediaField">
+        <span>{label}</span>
+        {isImage && stringValue ? <img className="recordMediaPreview" src={stringValue} alt="" /> : null}
+        {!isImage && stringValue ? <span className="recordFileName">{fileBasename(stringValue)}</span> : null}
+        <p className="recordMediaNote">
+          Editing this {isImage ? "image" : "file"} isn’t available inside a list yet.
+        </p>
+      </div>
+    );
+  }
+
+  const previewSrc = isImage ? pendingPreview || stringValue || "" : "";
+
+  return (
+    <div className="recordField recordMediaField">
+      <span>{label}</span>
+      <label
+        className={`imageDrop recordMediaDrop${isImage ? "" : " fileKind"}${isDragging ? " drag" : ""}${isUploading ? " uploading" : ""}`}
+        onDragOver={onDragOver}
+        onDragLeave={onDragLeave}
+        onDrop={onDrop}
+      >
+        <input
+          className="visuallyHidden"
+          type="file"
+          accept={isImage ? "image/*" : undefined}
+          disabled={isUploading}
+          onChange={onInput}
+        />
+        {isImage ? (
+          previewSrc ? <img src={previewSrc} alt="" /> : <span className="imageDropEmpty">No image yet</span>
+        ) : stringValue ? (
+          <span className="recordFileName">{fileBasename(stringValue)}</span>
+        ) : (
+          <span className="imageDropEmpty">No file yet</span>
+        )}
+        <span className="imageDropHint">
+          {isUploading ? (
+            <><span className="spinner" aria-hidden="true" />Uploading…</>
+          ) : isImage ? (
+            "Drop an image, or click to replace"
+          ) : (
+            "Drop a file, or click to replace"
+          )}
+        </span>
+      </label>
+      {error ? <p className="imageError" role="alert">{error}</p> : null}
+    </div>
+  );
+}
 
 function fieldGroups(collection) {
   if (Array.isArray(collection?.groups) && collection.groups.length) {
@@ -8,13 +163,6 @@ function fieldGroups(collection) {
     }));
   }
   return [{ label: null, fields: Array.isArray(collection?.fields) ? collection.fields : [] }];
-}
-
-function getAtPath(source, path) {
-  return path
-    .split(".")
-    .filter(Boolean)
-    .reduce((value, key) => (value && typeof value === "object" ? value[key] : undefined), source);
 }
 
 function setAtPath(source, path, value) {
@@ -30,9 +178,9 @@ function setAtPath(source, path, value) {
   return root;
 }
 
-function FieldControl({ field, value, onChange }) {
+function FieldControl({ field, value, onChange, onUploadFile, uploadable = true }) {
   const id = `record-field-${field.path}`;
-  const label = field.label ?? field.path;
+  const label = field.label ?? humanizeFieldLabel(field.path);
   const type = field.type ?? "text";
   const stringValue = value == null ? "" : String(value);
   const options = Array.isArray(field.options) ? field.options : [];
@@ -65,6 +213,8 @@ function FieldControl({ field, value, onChange }) {
             key={child.path}
             value={getAtPath(value, child.path)}
             onChange={onChange}
+            onUploadFile={onUploadFile}
+            uploadable={uploadable}
           />
         ))}
       </fieldset>
@@ -131,6 +281,7 @@ function FieldControl({ field, value, onChange }) {
                 field={itemField}
                 key={itemField.path}
                 value={getAtPath(item, itemField.path)}
+                uploadable={false}
                 onChange={(changedField, nextValue) => {
                   const next = [...items];
                   next[index] = setAtPath(next[index], changedField.path, nextValue);
@@ -146,20 +297,7 @@ function FieldControl({ field, value, onChange }) {
 
   if (type === "image" || type === "file") {
     return (
-      <div className="recordField">
-        <span>{label}</span>
-        {type === "image" && stringValue ? <img className="recordMediaPreview" src={stringValue} alt="" /> : null}
-        {type === "file" && stringValue ? <span className="recordFileValue">{stringValue}</span> : null}
-        <input
-          type="file"
-          accept={type === "image" ? "image/*" : undefined}
-          onChange={(event) => {
-            const file = event.target.files?.[0];
-            if (file) onChange(field, file);
-            event.target.value = "";
-          }}
-        />
-      </div>
+      <MediaField field={field} value={value} onUpload={onUploadFile} uploadable={uploadable} />
     );
   }
 
@@ -258,18 +396,19 @@ function FieldControl({ field, value, onChange }) {
   );
 }
 
-export function RecordPanel({ collection, record, recordData, onFieldChange, onClose, children }) {
+export function RecordPanel({ collection, record, recordData, isDraft = false, onFieldChange, onUploadFile, onClose, children }) {
   if (!record) return null;
 
   const groups = fieldGroups(collection);
   const hasFields = groups.some((group) => group.fields.length > 0);
+  const title = recordTitle(collection, record.itemSlug, recordData);
 
   return (
-    <aside className="recordPanel" aria-label={`Edit ${record.itemSlug}`}>
+    <aside className="recordPanel" aria-label={`Edit ${title}`}>
       <div className="recordPanelHead">
         <div className="recordPanelMeta">
-          <span className="recordPanelEyebrow">{collection?.label ?? record.collectionKey}</span>
-          <span className="recordPanelTitle">{record.itemSlug}</span>
+          <span className="recordPanelEyebrow">{collection?.label ?? collection?.key ?? "Record"}</span>
+          <span className="recordPanelTitle">{title}</span>
         </div>
         <button className="railClose" onClick={onClose} aria-label="Close record panel">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -277,6 +416,12 @@ export function RecordPanel({ collection, record, recordData, onFieldChange, onC
           </svg>
         </button>
       </div>
+
+      <p className={`recordStatus${isDraft ? " draft" : ""}`} aria-live="polite">
+        <span className="dot" />
+        {isDraft ? "Draft — not published yet" : "Published — live on your site"}
+      </p>
+
       {children ?? (
         <div className="recordPanelBody">
           {hasFields ? (
@@ -289,6 +434,7 @@ export function RecordPanel({ collection, record, recordData, onFieldChange, onC
                     key={field.path}
                     value={getAtPath(recordData, field.path)}
                     onChange={(changedField, value) => onFieldChange?.(changedField.path, value)}
+                    onUploadFile={onUploadFile}
                   />
                 ))}
               </section>

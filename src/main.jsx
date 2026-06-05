@@ -372,6 +372,13 @@ function Cms() {
   const selectedRecordData = selectedRecord
     ? previewCollectionItems.find((item) => item.slug === selectedRecord.itemSlug)?.data
     : null;
+  const selectedRecordIsDraft = selectedRecord
+    ? collectionDrafts.some(
+        (draft) =>
+          draft.collectionKey === selectedRecord.collectionKey &&
+          draft.slug === selectedRecord.itemSlug,
+      )
+    : false;
   const imageFieldId = selectedImageField?.id ?? null;
   const imageTitle = imageFieldId ? imageFieldTitle(imageFieldId) : "";
   const imageIsDraft = imageFieldId ? draftFieldIds.includes(imageFieldId) : false;
@@ -582,36 +589,51 @@ function Cms() {
           collection={selectedRecordCollection}
           record={selectedRecord}
           recordData={selectedRecordData}
-          onFieldChange={async (path, value) => {
-            let draftValue = value;
-            if (typeof File !== "undefined" && value instanceof File) {
-              const uploadUrl = await generateCollectionFileUploadUrl({
-                projectSlug,
-                collectionKey: selectedRecord.collectionKey,
-                slug: selectedRecord.itemSlug,
-                path,
-              });
-              if (!uploadUrl) throw new Error("Unable to create file upload URL.");
-
-              const response = await fetch(uploadUrl, {
-                method: "POST",
-                headers: { "Content-Type": value.type || "application/octet-stream" },
-                body: value,
-              });
-              if (!response.ok) throw new Error(`File upload failed with status ${response.status}.`);
-
-              const { storageId } = await response.json();
-              if (!storageId) throw new Error("File upload did not return a storage ID.");
-              draftValue = `convex-storage:${storageId}`;
-            }
-
+          isDraft={selectedRecordIsDraft}
+          onFieldChange={(path, value) => {
+            // Scalar saves are fire-and-forget; errors surface as a toast, never
+            // an unhandled rejection.
             saveCollectionItemDraft({
               projectSlug,
               collectionKey: selectedRecord.collectionKey,
               slug: selectedRecord.itemSlug,
               path,
-              value: draftValue,
-            }).then(() => showToast("Saved"));
+              value,
+            })
+              .then(() => showToast("Saved"))
+              .catch((error) => {
+                console.error(error);
+                showToast("Couldn’t save");
+              });
+          }}
+          onUploadFile={async (path, file) => {
+            // Awaitable: the picker shows progress and surfaces failures.
+            const uploadUrl = await generateCollectionFileUploadUrl({
+              projectSlug,
+              collectionKey: selectedRecord.collectionKey,
+              slug: selectedRecord.itemSlug,
+              path,
+            });
+            if (!uploadUrl) throw new Error("Unable to create file upload URL.");
+
+            const response = await fetch(uploadUrl, {
+              method: "POST",
+              headers: { "Content-Type": file.type || "application/octet-stream" },
+              body: file,
+            });
+            if (!response.ok) throw new Error(`File upload failed with status ${response.status}.`);
+
+            const { storageId } = await response.json();
+            if (!storageId) throw new Error("File upload did not return a storage ID.");
+
+            await saveCollectionItemDraft({
+              projectSlug,
+              collectionKey: selectedRecord.collectionKey,
+              slug: selectedRecord.itemSlug,
+              path,
+              value: `convex-storage:${storageId}`,
+            });
+            showToast("Saved");
           }}
           onClose={() => setSelectedRecord(null)}
         />

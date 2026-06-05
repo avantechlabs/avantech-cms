@@ -21,6 +21,52 @@ const SEEDED_PROJECTS = [
   },
 ];
 
+// Demo collection records so the collections editor has something to render
+// and click out of the box. Seeded as published; insert-if-missing so re-runs
+// never clobber owner edits.
+const SEEDED_COLLECTIONS: Record<string, Record<string, { slug: string; data: unknown }[]>> = {
+  "project-b": {
+    caseStudies: [
+      {
+        slug: "northgate-group",
+        data: {
+          title: "Northgate closes 3× faster",
+          client: "Northgate Group",
+          industry: "Finance",
+          summary:
+            "A 47-page supply agreement that used to take three weeks of email redlines now closes in two days, with every clause auditable.",
+          cover: "/images/sable-contract-workspace.png",
+          featured: true,
+        },
+      },
+      {
+        slug: "meridian-health",
+        data: {
+          title: "Meridian standardizes 200 contracts",
+          client: "Meridian Health",
+          industry: "Healthcare",
+          summary:
+            "Meridian's legal team rebuilt its clause library in Sable and brought 200 vendor contracts onto one approved standard.",
+          cover: "/images/sable-contract-workspace.png",
+          featured: false,
+        },
+      },
+      {
+        slug: "lumen-retail",
+        data: {
+          title: "Lumen cuts review time 70%",
+          client: "Lumen Retail",
+          industry: "Retail",
+          summary:
+            "Automated risk flagging let Lumen's two-person legal team keep pace with a fast-scaling store-rollout pipeline.",
+          cover: "/images/sable-contract-workspace.png",
+          featured: false,
+        },
+      },
+    ],
+  },
+};
+
 const fieldsValidator = v.record(v.string(), v.string());
 const collectionItemsValidator = v.array(
   v.object({
@@ -282,6 +328,25 @@ export const ensureSeedData = mutation({
           publishedFields: {},
           updatedAt: now,
         });
+      }
+
+      const seededCollections = SEEDED_COLLECTIONS[seed.slug];
+      if (seededCollections) {
+        for (const [collectionKey, items] of Object.entries(seededCollections)) {
+          for (const item of items) {
+            const existing = await getCollectionItem(ctx, project._id, collectionKey, item.slug);
+            if (!existing) {
+              await ctx.db.insert("collectionItems", {
+                projectId: project._id,
+                collectionKey,
+                slug: item.slug,
+                publishedData: item.data,
+                publishedAt: now,
+                updatedAt: now,
+              });
+            }
+          }
+        }
       }
     }
 

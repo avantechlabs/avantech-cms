@@ -1,7 +1,14 @@
-import React from "react";
+import React, { useMemo } from "react";
 import { createRoot } from "react-dom/client";
 import { ConvexProvider, ConvexReactClient } from "convex/react";
-import { CmsContentProvider, CmsImage, CmsText, useEditBridge } from "../../shared/useCmsPage.jsx";
+import {
+  CmsCollectionsProvider,
+  CmsContentProvider,
+  CmsImage,
+  CmsText,
+  useCmsCollection,
+  useEditBridge,
+} from "../../shared/useCmsPage.jsx";
 import "./style.css";
 
 const IconDraft = () => (
@@ -76,6 +83,36 @@ const PROJECT_SLUG = "project-b";
 const PAGE_SLUG = "home";
 const convexUrl = import.meta.env.VITE_CONVEX_URL;
 
+// Collection definition registered with the CMS editor. The website owns this
+// shape; the editor reads it to build the rail row and the record form.
+const CASE_STUDIES_COLLECTION = {
+  key: "caseStudies",
+  label: "Case studies",
+  titlePath: "title",
+  slugPath: "slug",
+  defaultItem: {
+    title: "",
+    client: "",
+    industry: "SaaS",
+    summary: "",
+    cover: "/images/sable-contract-workspace.png",
+    featured: false,
+  },
+  fields: [
+    { path: "title", label: "Title", type: "text" },
+    { path: "client", label: "Client", type: "text" },
+    {
+      path: "industry",
+      label: "Industry",
+      type: "select",
+      options: ["SaaS", "Finance", "Healthcare", "Retail"],
+    },
+    { path: "summary", label: "Summary", type: "longText" },
+    { path: "cover", label: "Cover image", type: "image" },
+    { path: "featured", label: "Featured on homepage", type: "boolean" },
+  ],
+};
+
 function SiteApp() {
   if (!convexUrl) {
     throw new Error("Set VITE_CONVEX_URL to render CMS content from Convex.");
@@ -99,9 +136,14 @@ function SiteWithCms() {
 
 function Site() {
   useEditBridge();
+  const caseStudies = useCmsCollection(PROJECT_SLUG, "caseStudies");
+  const collections = useMemo(
+    () => [{ ...CASE_STUDIES_COLLECTION, recordCount: caseStudies.length }],
+    [caseStudies.length],
+  );
 
   return (
-    <>
+    <CmsCollectionsProvider collections={collections}>
       <nav className="nav" data-cms-field="nav">
         <div className="nav-inner">
           <a href="/" className="nav-brand">
@@ -267,6 +309,34 @@ function Site() {
         </div>
       </section>
 
+      {caseStudies.length > 0 && (
+        <section className="cases" id="cases">
+          <div className="cases-inner">
+            <div className="cases-header">
+              <p className="section-label">Case studies</p>
+              <h2 className="cases-title">Outcomes our customers can measure.</h2>
+            </div>
+            <div className="cases-grid">
+              {caseStudies.map((record) => (
+                <article
+                  className="case-card"
+                  key={record.slug}
+                  data-cms-record={`caseStudies:${record.slug}`}
+                >
+                  <div className="case-cover">
+                    <img src={record.data.cover} alt="" />
+                  </div>
+                  <span className="case-industry">{record.data.industry}</span>
+                  <h3 className="case-title">{record.data.title}</h3>
+                  <p className="case-client">{record.data.client}</p>
+                  <p className="case-summary">{record.data.summary}</p>
+                </article>
+              ))}
+            </div>
+          </div>
+        </section>
+      )}
+
       <section className="testimonial">
         <div className="testimonial-inner">
           <h2 className="testimonial-lede" data-cms-field="testimonial.lede">
@@ -340,7 +410,7 @@ function Site() {
           </p>
         </div>
       </footer>
-    </>
+    </CmsCollectionsProvider>
   );
 }
 
