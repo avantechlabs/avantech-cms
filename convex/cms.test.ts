@@ -419,6 +419,97 @@ test("published page fields read the requested language with legacy fallback", a
   expect(legacyPublished["button.cta"]).toBe("Contactez-nous");
 });
 
+test("site-wide publish promotes only the selected language page drafts", async () => {
+  const t = convexTest(schema, modules);
+  await t.mutation(api.cms.ensureSeedData);
+
+  await t.mutation(api.cms.seedDiscoveredFields, {
+    projectSlug,
+    pageSlug,
+    fields: [{ id: "button.cta", value: "Contactez-nous" }],
+  });
+  await t.mutation(api.cms.saveDraft, {
+    projectSlug,
+    pageSlug,
+    language: "fr",
+    fields: { "button.cta": "Parlez-nous" },
+  });
+  await t.mutation(api.cms.saveDraft, {
+    projectSlug,
+    pageSlug,
+    language: "en",
+    fields: { "button.cta": "Contact us" },
+  });
+
+  await t.mutation(api.cms.publishSite, {
+    projectSlug,
+    language: "en",
+  });
+
+  const englishPublished = await t.query(api.cms.getPublishedContent, {
+    projectSlug,
+    pageSlug,
+    language: "en",
+  });
+  const frenchPreview = await t.query(api.cms.getPreviewContent, {
+    projectSlug,
+    pageSlug,
+    language: "fr",
+  });
+  const englishDraftState = await t.query(api.cms.getSiteDraftState, {
+    projectSlug,
+    pageSlug,
+    language: "en",
+  });
+  const frenchDraftState = await t.query(api.cms.getSiteDraftState, {
+    projectSlug,
+    pageSlug,
+    language: "fr",
+  });
+
+  expect(englishPublished["button.cta"]).toBe("Contact us");
+  expect(frenchPreview["button.cta"]).toBe("Parlez-nous");
+  expect(englishDraftState.pageDraftFieldIds).toEqual([]);
+  expect(frenchDraftState.pageDraftFieldIds).toEqual(["button.cta"]);
+});
+
+test("site-wide discard clears only the selected language page drafts", async () => {
+  const t = convexTest(schema, modules);
+  await t.mutation(api.cms.ensureSeedData);
+
+  await t.mutation(api.cms.saveDraft, {
+    projectSlug,
+    pageSlug,
+    language: "fr",
+    fields: { "button.cta": "Parlez-nous" },
+  });
+  await t.mutation(api.cms.saveDraft, {
+    projectSlug,
+    pageSlug,
+    language: "en",
+    fields: { "button.cta": "Contact us" },
+  });
+
+  await t.mutation(api.cms.discardSiteDrafts, {
+    projectSlug,
+    language: "en",
+  });
+
+  const englishPreview = await t.query(api.cms.getPreviewContent, {
+    projectSlug,
+    pageSlug,
+    language: "en",
+  });
+  const frenchPreview = await t.query(api.cms.getPreviewContent, {
+    projectSlug,
+    pageSlug,
+    language: "fr",
+  });
+
+  expect(englishPreview["button.cta"]).toBeUndefined();
+  expect(frenchPreview["button.cta"]).toBe("Parlez-nous");
+});
+
 test("website-declared pages sync, isolate drafts, and publish or discard project-wide", async () => {
   const t = convexTest(schema, modules);
   await t.mutation(api.cms.ensureSeedData);

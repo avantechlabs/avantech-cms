@@ -4,7 +4,11 @@ import { api } from "../../convex/_generated/api.js";
 
 type SaveState = "idle" | "saving" | "saved" | "publishing" | "published";
 
-export function useFieldManager(projectSlug: string, pageSlug: string) {
+export function useFieldManager(
+  projectSlug: string,
+  pageSlug: string,
+  language = "fr",
+) {
   const [saveState, setSaveState] = useState<SaveState>("idle");
   const seededSignatureRef = useRef("");
   // The latest in-flight draft save; publish/discard wait on it so a fast
@@ -19,7 +23,12 @@ export function useFieldManager(projectSlug: string, pageSlug: string) {
 
   function saveDraftField(fieldId: string, value: string) {
     setSaveState("saving");
-    const saved = saveDraft({ projectSlug, pageSlug, fields: { [fieldId]: value } })
+    const saved = saveDraft({
+      projectSlug,
+      pageSlug,
+      language,
+      fields: { [fieldId]: value },
+    })
       .then(() => setSaveState("saved"));
     pendingSaveRef.current = saved.catch(() => {});
     return saved;
@@ -47,6 +56,7 @@ export function useFieldManager(projectSlug: string, pageSlug: string) {
         await saveDraft({
           projectSlug,
           pageSlug,
+          language,
           fields: { [fieldId]: canonicalValue },
         });
         setSaveState("saved");
@@ -64,13 +74,13 @@ export function useFieldManager(projectSlug: string, pageSlug: string) {
   function publish() {
     setSaveState("publishing");
     return pendingSaveRef.current
-      .then(() => publishSite({ projectSlug, pageSlug }))
+      .then(() => publishSite({ projectSlug, pageSlug, language }))
       .then(() => setSaveState("published"));
   }
 
   function discard() {
     return pendingSaveRef.current.then(() =>
-      discardSiteDrafts({ projectSlug, pageSlug }),
+      discardSiteDrafts({ projectSlug, pageSlug, language }),
     );
   }
 

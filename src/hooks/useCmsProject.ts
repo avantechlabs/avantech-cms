@@ -2,7 +2,11 @@ import { useMemo } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api.js";
 
-export function useCmsProject(projectSlug: string, pageSlug: string) {
+export function useCmsProject(
+  projectSlug: string,
+  pageSlug: string,
+  language = "fr",
+) {
   const ensureSeedData = useMutation(api.cms.ensureSeedData);
   const projects = useQuery(api.cms.listProjects) ?? [];
   const project = useQuery(api.cms.getProjectBySlug, { slug: projectSlug });
@@ -15,11 +19,11 @@ export function useCmsProject(projectSlug: string, pageSlug: string) {
   // draft-vs-live markers are derived from real persisted state, not a guess.
   const page = useQuery(
     api.cms.getPage,
-    project ? { projectSlug, pageSlug } : "skip",
+    project ? { projectSlug, pageSlug, language } : "skip",
   );
   const siteDraftState = useQuery(
     api.cms.getSiteDraftState,
-    project ? { projectSlug, pageSlug } : "skip",
+    project ? { projectSlug, pageSlug, language } : "skip",
   );
 
   const publishedFields = page?.publishedFields ?? {};
@@ -45,8 +49,9 @@ export function useCmsProject(projectSlug: string, pageSlug: string) {
     url.pathname = pagePath.startsWith("/") ? pagePath : `/${pagePath}`;
     url.searchParams.set("edit", "1");
     url.searchParams.set("parent", window.location.origin);
+    url.searchParams.set("cmsLanguage", language);
     return url.toString();
-  }, [page?.page?.path, pageSlug, project]);
+  }, [language, page?.page?.path, pageSlug, project]);
 
   return {
     projects,

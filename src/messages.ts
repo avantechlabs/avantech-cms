@@ -10,6 +10,7 @@ export type CmsToSiteMessage =
   | { type: "cms:update-field"; fieldId: string; value: string }
   | { type: "cms:select-field"; fieldId: string }
   | { type: "cms:enter-field"; fieldId: string }
+  | { type: "cms:set-language"; language: "fr" | "en" }
   | { type: "cms:set-mode"; mode: "view" | "edit" }
   | { type: "cms:set-theme"; theme: "light" | "dark"; tokens: ThemeTokens }
   | { type: "cms:set-drafts"; fieldIds: string[] }

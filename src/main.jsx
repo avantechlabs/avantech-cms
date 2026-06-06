@@ -280,6 +280,7 @@ function ProjectsAdmin() {
 function Cms() {
   const projectSlug = getProjectSlug();
   const [selectedPageSlug, setSelectedPageSlug] = useState("home");
+  const [selectedLanguage, setSelectedLanguage] = useState("fr");
 
   const {
     projects,
@@ -294,7 +295,7 @@ function Cms() {
     previewOrigin,
     siteUrl,
     ensureSeedData,
-  } = useCmsProject(projectSlug, selectedPageSlug);
+  } = useCmsProject(projectSlug, selectedPageSlug, selectedLanguage);
 
   const {
     saveState,
@@ -305,7 +306,7 @@ function Cms() {
     publish,
     discard,
     resetForProject,
-  } = useFieldManager(projectSlug, selectedPageSlug);
+  } = useFieldManager(projectSlug, selectedPageSlug, selectedLanguage);
 
   const [mode, setMode] = useState("edit");
   const [theme, setTheme] = useState("light");
@@ -350,6 +351,7 @@ function Cms() {
     pageSlug: selectedPageSlug,
     onReady: () => {
       send({ type: "cms:discover-fields" });
+      send({ type: "cms:set-language", language: selectedLanguage });
       send({ type: "cms:set-mode", mode });
       send({ type: "cms:set-theme", theme, tokens: BRIDGE_TOKENS[theme] });
       // Resend current content + draft markers so an iframe reload re-hydrates
@@ -428,6 +430,10 @@ function Cms() {
   }, [draftSignature, send]);
 
   useEffect(() => {
+    send({ type: "cms:set-language", language: selectedLanguage });
+  }, [selectedLanguage, send]);
+
+  useEffect(() => {
     send({ type: "cms:set-draft-records", records: collectionDrafts });
   }, [collectionDraftSignature, send]);
 
@@ -445,7 +451,7 @@ function Cms() {
     setSelectedCollectionKey(null);
     setSelectedField(null);
     setSelectedRecord(null);
-  }, [projectSlug, selectedPageSlug]);
+  }, [projectSlug, selectedPageSlug, selectedLanguage]);
 
   // Mode → html attribute (drives chrome recede) + iframe affordances + first-run hint.
   useEffect(() => {
@@ -663,6 +669,20 @@ function Cms() {
         <div className="modeToggle" role="group" aria-label="Mode">
           <button className={mode === "view" ? "on" : ""} onClick={() => setMode("view")}>View</button>
           <button className={mode === "edit" ? "on" : ""} onClick={() => setMode("edit")}>Edit</button>
+        </div>
+        <div className="modeToggle" role="group" aria-label="Language">
+          <button
+            className={selectedLanguage === "fr" ? "on" : ""}
+            onClick={() => setSelectedLanguage("fr")}
+          >
+            FR
+          </button>
+          <button
+            className={selectedLanguage === "en" ? "on" : ""}
+            onClick={() => setSelectedLanguage("en")}
+          >
+            EN
+          </button>
         </div>
       </div>
 
