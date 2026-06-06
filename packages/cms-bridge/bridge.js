@@ -381,6 +381,13 @@
           document.documentElement.style.setProperty(name, value);
         }
         break;
+      case "cms:set-language":
+        window.dispatchEvent(
+          new CustomEvent("cms:language-changed", {
+            detail: { language: message.language },
+          }),
+        );
+        break;
       case "cms:set-drafts": {
         const drafts = new Set(message.fieldIds || []);
         for (const el of leafFields()) {

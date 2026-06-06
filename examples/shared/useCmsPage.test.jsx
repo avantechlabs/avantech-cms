@@ -84,6 +84,19 @@ test("CmsImage keeps the fallback src available for edit-mode discovery", () => 
   expect(html).toContain('src="/fallback-hero.jpg"');
 });
 
+test("CmsContentProvider reads published fields for the selected language", () => {
+  renderToStaticMarkup(
+    <CmsContentProvider projectSlug="project-a" pageSlug="home" language="en">
+      <main />
+    </CmsContentProvider>,
+  );
+
+  expect(queryState.calls).toContainEqual({
+    query: "cms:getPublishedContent",
+    args: { projectSlug: "project-a", pageSlug: "home", language: "en" },
+  });
+});
+
 test("CmsCollectionsProvider registers serializable definitions for the bridge", async () => {
   window.history.replaceState({}, "", `/?parent=${encodeURIComponent(parentOrigin)}`);
   document.body.innerHTML = `<div id="root"></div>`;
@@ -156,6 +169,24 @@ test("CmsPagesProvider registers serializable page definitions for the bridge", 
       ],
     },
   });
+});
+
+test("bridge exposes CMS language changes as site events", () => {
+  window.history.replaceState({}, "", `/?parent=${encodeURIComponent(parentOrigin)}`);
+  const languages = [];
+  window.addEventListener("cms:language-changed", (event) => {
+    languages.push(event.detail.language);
+  });
+
+  window.eval(bridgeSource);
+  window.dispatchEvent(
+    new MessageEvent("message", {
+      origin: parentOrigin,
+      data: { type: "cms:set-language", language: "en" },
+    }),
+  );
+
+  expect(languages).toContain("en");
 });
 
 test("useCmsCollection reads published records through a public string query", () => {

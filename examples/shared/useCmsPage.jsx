@@ -56,10 +56,11 @@ export function useEditBridge() {
   }, []);
 }
 
-export function useCmsPage(projectSlug, pageSlug) {
+export function useCmsPage(projectSlug, pageSlug, language = "fr") {
   const publishedFields = useQuery(PUBLISHED_CONTENT_QUERY, {
     projectSlug,
     pageSlug,
+    language,
   });
 
   useEffect(() => {
@@ -92,12 +93,14 @@ export function useCmsCollection(projectSlug, collectionKey) {
 export function CmsContentProvider({
   projectSlug,
   pageSlug,
+  language = "fr",
   mode = "public",
   children,
 }) {
   const publishedFields = useQuery(PUBLISHED_CONTENT_QUERY, {
     projectSlug,
     pageSlug,
+    language,
   });
 
   const value = useMemo(
