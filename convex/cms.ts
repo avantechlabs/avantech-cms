@@ -633,12 +633,21 @@ export const getPublishedContent = query({
   args: {
     projectSlug: v.string(),
     pageSlug: v.string(),
+    language: languageValidator,
   },
   handler: async (ctx, args) => {
     const result = await requireContent(ctx, args.projectSlug, args.pageSlug);
+    const language = languageOrDefault(args.language);
+    const publishedFields =
+      args.language === undefined
+        ? result?.content?.publishedFields ?? {}
+        : {
+            ...(result?.content?.publishedFields ?? {}),
+            ...fieldsForLanguage(result?.content?.publishedFieldsByLanguage, language),
+          };
     return await resolveStorageFieldMap(
       ctx,
-      result?.content?.publishedFields ?? {},
+      publishedFields,
     );
   },
 });
@@ -656,7 +665,10 @@ export const getPreviewContent = query({
     const publishedFields =
       args.language === undefined
         ? result.content.publishedFields
-        : fieldsForLanguage(result.content.publishedFieldsByLanguage, language);
+        : {
+            ...result.content.publishedFields,
+            ...fieldsForLanguage(result.content.publishedFieldsByLanguage, language),
+          };
     const draftFields =
       args.language === undefined
         ? result.content.draftFields
@@ -1146,22 +1158,44 @@ export const publishPage = mutation({
   args: {
     projectSlug: v.string(),
     pageSlug: v.string(),
+    language: languageValidator,
   },
   handler: async (ctx, args) => {
     const result = await requireContent(ctx, args.projectSlug, args.pageSlug);
     if (!result) return null;
 
-    const draftFields = result.content?.draftFields ?? {};
-    const publishedFields = {
-      ...(result.content?.publishedFields ?? {}),
-      ...draftFields,
-    };
+    const language = languageOrDefault(args.language);
+    const draftFields =
+      args.language === undefined
+        ? result.content?.draftFields ?? {}
+        : fieldsForLanguage(result.content?.draftFieldsByLanguage, language);
+    const existingPublishedFields =
+      args.language === undefined
+        ? result.content?.publishedFields ?? {}
+        : fieldsForLanguage(result.content?.publishedFieldsByLanguage, language);
+    const publishedFields = { ...existingPublishedFields, ...draftFields };
 
-    await upsertPageContent(ctx, result.project._id, result.page._id, result.content, {
-      draftFields: {},
-      publishedFields,
-      publishedAt: Date.now(),
-    });
+    if (args.language === undefined) {
+      await upsertPageContent(ctx, result.project._id, result.page._id, result.content, {
+        draftFields: {},
+        publishedFields,
+        publishedAt: Date.now(),
+      });
+    } else {
+      await upsertPageContent(ctx, result.project._id, result.page._id, result.content, {
+        draftFieldsByLanguage: setFieldsForLanguage(
+          result.content?.draftFieldsByLanguage,
+          language,
+          {},
+        ),
+        publishedFieldsByLanguage: setFieldsForLanguage(
+          result.content?.publishedFieldsByLanguage,
+          language,
+          publishedFields,
+        ),
+        publishedAt: Date.now(),
+      });
+    }
 
     return publishedFields;
   },

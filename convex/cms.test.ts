@@ -378,6 +378,47 @@ test("page draft fields are isolated by editor language", async () => {
   expect(englishPreview["button.cta"]).toBe("Contact us");
 });
 
+test("published page fields read the requested language with legacy fallback", async () => {
+  const t = convexTest(schema, modules);
+  await t.mutation(api.cms.ensureSeedData);
+
+  await t.mutation(api.cms.seedDiscoveredFields, {
+    projectSlug,
+    pageSlug,
+    fields: [{ id: "button.cta", value: "Contactez-nous" }],
+  });
+  await t.mutation(api.cms.saveDraft, {
+    projectSlug,
+    pageSlug,
+    language: "en",
+    fields: { "button.cta": "Contact us" },
+  });
+  await t.mutation(api.cms.publishPage, {
+    projectSlug,
+    pageSlug,
+    language: "en",
+  });
+
+  const englishPublished = await t.query(api.cms.getPublishedContent, {
+    projectSlug,
+    pageSlug,
+    language: "en",
+  });
+  const frenchPublished = await t.query(api.cms.getPublishedContent, {
+    projectSlug,
+    pageSlug,
+    language: "fr",
+  });
+  const legacyPublished = await t.query(api.cms.getPublishedContent, {
+    projectSlug,
+    pageSlug,
+  });
+
+  expect(englishPublished["button.cta"]).toBe("Contact us");
+  expect(frenchPublished["button.cta"]).toBe("Contactez-nous");
+  expect(legacyPublished["button.cta"]).toBe("Contactez-nous");
+});
+
 test("website-declared pages sync, isolate drafts, and publish or discard project-wide", async () => {
   const t = convexTest(schema, modules);
   await t.mutation(api.cms.ensureSeedData);
