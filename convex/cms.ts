@@ -215,11 +215,66 @@ function setFieldsForLanguage(
   };
 }
 
-function hasMeaningfulCollectionDraft(item: Doc<"collectionItems">) {
-  if (item.draftData === undefined) return false;
+function collectionDataForLanguage(
+  dataByLanguage: Record<string, unknown> | undefined,
+  language: string,
+) {
+  if (!dataByLanguage) return undefined;
+  return Object.prototype.hasOwnProperty.call(dataByLanguage, language)
+    ? dataByLanguage[language]
+    : undefined;
+}
+
+function setCollectionDataForLanguage(
+  dataByLanguage: Record<string, unknown> | undefined,
+  language: string,
+  data: unknown,
+) {
+  return {
+    ...(dataByLanguage ?? {}),
+    [language]: data,
+  };
+}
+
+function clearCollectionDataForLanguage(
+  dataByLanguage: Record<string, unknown> | undefined,
+  language: string,
+) {
+  const next = { ...(dataByLanguage ?? {}) };
+  delete next[language];
+  return next;
+}
+
+function publishedCollectionData(item: Doc<"collectionItems">, language: string | undefined) {
+  if (language === undefined) return item.publishedData;
+  return collectionDataForLanguage(item.publishedDataByLanguage, language) ?? item.publishedData;
+}
+
+function previewCollectionData(item: Doc<"collectionItems">, language: string | undefined) {
+  if (language === undefined) {
+    return mergeDraftOverPublished(item.publishedData, item.draftData);
+  }
+
+  return mergeDraftOverPublished(
+    publishedCollectionData(item, language),
+    collectionDataForLanguage(item.draftDataByLanguage, language),
+  );
+}
+
+function hasMeaningfulCollectionDraft(
+  item: Doc<"collectionItems">,
+  language: string | undefined,
+) {
+  const draftData =
+    language === undefined
+      ? item.draftData
+      : collectionDataForLanguage(item.draftDataByLanguage, language);
+  if (draftData === undefined) return false;
+
+  const publishedData = publishedCollectionData(item, language);
   return !valuesEqual(
-    mergeDraftOverPublished(item.publishedData, item.draftData),
-    item.publishedData,
+    mergeDraftOverPublished(publishedData, draftData),
+    publishedData,
   );
 }
 
@@ -740,6 +795,7 @@ export const listPublishedCollectionItems = query({
   args: {
     projectSlug: v.string(),
     collectionKey: v.string(),
+    language: languageValidator,
   },
   handler: async (ctx, args) => {
     const project = await getProject(ctx, args.projectSlug);
@@ -753,11 +809,16 @@ export const listPublishedCollectionItems = query({
       .take(200);
 
     const storageUrlCache = new Map<string, string | null>();
+    const language = args.language === undefined ? undefined : languageOrDefault(args.language);
     const publishedItems = items
-      .filter((item) => item.publishedData !== undefined)
       .map((item) => ({
-        slug: item.slug,
-        data: item.publishedData,
+        item,
+        data: publishedCollectionData(item, language),
+      }))
+      .filter(({ data }) => data !== undefined)
+      .map((item) => ({
+        slug: item.item.slug,
+        data: item.data,
       }));
 
     return await Promise.all(
@@ -774,6 +835,7 @@ export const createCollectionItemDraft = mutation({
     projectSlug: v.string(),
     collectionKey: v.string(),
     slug: v.string(),
+    language: languageValidator,
     data: v.any(),
   },
   handler: async (ctx, args) => {
@@ -787,18 +849,39 @@ export const createCollectionItemDraft = mutation({
       args.slug,
     );
     const now = Date.now();
+    const language = args.language === undefined ? undefined : languageOrDefault(args.language);
     if (existing) {
-      await ctx.db.patch(existing._id, {
-        draftData: args.data,
-        draftUpdatedAt: now,
-        updatedAt: now,
-      });
+      if (language === undefined) {
+        await ctx.db.patch(existing._id, {
+          draftData: args.data,
+          draftUpdatedAt: now,
+          updatedAt: now,
+        });
+      } else {
+        await ctx.db.patch(existing._id, {
+          draftDataByLanguage: setCollectionDataForLanguage(
+            existing.draftDataByLanguage,
+            language,
+            args.data,
+          ),
+          draftUpdatedAt: now,
+          updatedAt: now,
+        });
+      }
     } else {
       await ctx.db.insert("collectionItems", {
         projectId: project._id,
         collectionKey: args.collectionKey,
         slug: args.slug,
-        draftData: args.data,
+        ...(language === undefined
+          ? { draftData: args.data }
+          : {
+              draftDataByLanguage: setCollectionDataForLanguage(
+                undefined,
+                language,
+                args.data,
+              ),
+            }),
         draftUpdatedAt: now,
         updatedAt: now,
       });
@@ -836,6 +919,7 @@ export const saveCollectionItemDraft = mutation({
     projectSlug: v.string(),
     collectionKey: v.string(),
     slug: v.string(),
+    language: languageValidator,
     path: v.string(),
     value: v.any(),
   },
@@ -851,16 +935,37 @@ export const saveCollectionItemDraft = mutation({
     );
     if (!item) return null;
 
-    const draftData = setAtPath(item.draftData, args.path, args.value);
-    await ctx.db.patch(item._id, {
-      draftData,
-      draftUpdatedAt: Date.now(),
-      updatedAt: Date.now(),
-    });
+    const language = args.language === undefined ? undefined : languageOrDefault(args.language);
+    const now = Date.now();
+    const draftData = setAtPath(
+      language === undefined
+        ? item.draftData
+        : collectionDataForLanguage(item.draftDataByLanguage, language),
+      args.path,
+      args.value,
+    );
+
+    if (language === undefined) {
+      await ctx.db.patch(item._id, {
+        draftData,
+        draftUpdatedAt: now,
+        updatedAt: now,
+      });
+    } else {
+      await ctx.db.patch(item._id, {
+        draftDataByLanguage: setCollectionDataForLanguage(
+          item.draftDataByLanguage,
+          language,
+          draftData,
+        ),
+        draftUpdatedAt: now,
+        updatedAt: now,
+      });
+    }
 
     return {
       slug: item.slug,
-      data: mergeDraftOverPublished(item.publishedData, draftData),
+      data: mergeDraftOverPublished(publishedCollectionData(item, language), draftData),
     };
   },
 });
@@ -869,6 +974,7 @@ export const listPreviewCollectionItems = query({
   args: {
     projectSlug: v.string(),
     collectionKey: v.string(),
+    language: languageValidator,
   },
   handler: async (ctx, args) => {
     const project = await getProject(ctx, args.projectSlug);
@@ -882,12 +988,13 @@ export const listPreviewCollectionItems = query({
       .take(200);
 
     const storageUrlCache = new Map<string, string | null>();
+    const language = args.language === undefined ? undefined : languageOrDefault(args.language);
     return await Promise.all(
       items.map(async (item) => ({
         slug: item.slug,
         data: await resolveStorageInValue(
           ctx,
-          mergeDraftOverPublished(item.publishedData, item.draftData),
+          previewCollectionData(item, language),
           storageUrlCache,
         ),
       })),
@@ -950,8 +1057,10 @@ export const getSiteDraftState = query({
       .query("collectionItems")
       .withIndex("by_projectId", (q) => q.eq("projectId", project._id))
       .take(500);
+    const collectionLanguage =
+      args.language === undefined ? undefined : languageOrDefault(args.language);
     const collectionDrafts = collectionItems
-      .filter(hasMeaningfulCollectionDraft)
+      .filter((item) => hasMeaningfulCollectionDraft(item, collectionLanguage))
       .map((item) => ({
         collectionKey: item.collectionKey,
         slug: item.slug,
@@ -1025,14 +1134,34 @@ export const publishSite = mutation({
       .withIndex("by_projectId", (q) => q.eq("projectId", project._id))
       .take(500);
     for (const item of collectionItems) {
-      if (item.draftData === undefined) continue;
-      await ctx.db.patch(item._id, {
-        publishedData: mergeDraftOverPublished(item.publishedData, item.draftData),
-        draftData: undefined,
-        draftUpdatedAt: undefined,
-        publishedAt: now,
-        updatedAt: now,
-      });
+      if (args.language === undefined) {
+        if (item.draftData === undefined) continue;
+        await ctx.db.patch(item._id, {
+          publishedData: mergeDraftOverPublished(item.publishedData, item.draftData),
+          draftData: undefined,
+          draftUpdatedAt: undefined,
+          publishedAt: now,
+          updatedAt: now,
+        });
+      } else {
+        const draftData = collectionDataForLanguage(item.draftDataByLanguage, language);
+        if (draftData === undefined) continue;
+
+        await ctx.db.patch(item._id, {
+          publishedDataByLanguage: setCollectionDataForLanguage(
+            item.publishedDataByLanguage,
+            language,
+            mergeDraftOverPublished(publishedCollectionData(item, language), draftData),
+          ),
+          draftDataByLanguage: clearCollectionDataForLanguage(
+            item.draftDataByLanguage,
+            language,
+          ),
+          draftUpdatedAt: undefined,
+          publishedAt: now,
+          updatedAt: now,
+        });
+      }
     }
 
     return null;
@@ -1075,16 +1204,40 @@ export const discardSiteDrafts = mutation({
       .take(500);
     const now = Date.now();
     for (const item of collectionItems) {
-      if (item.draftData === undefined) continue;
-      if (item.publishedData === undefined) {
-        await ctx.db.delete(item._id);
-        continue;
+      if (args.language === undefined) {
+        if (item.draftData === undefined) continue;
+        if (item.publishedData === undefined) {
+          await ctx.db.delete(item._id);
+          continue;
+        }
+        await ctx.db.patch(item._id, {
+          draftData: undefined,
+          draftUpdatedAt: undefined,
+          updatedAt: now,
+        });
+      } else {
+        const draftData = collectionDataForLanguage(item.draftDataByLanguage, language);
+        if (draftData === undefined) continue;
+
+        const nextDraftDataByLanguage = clearCollectionDataForLanguage(
+          item.draftDataByLanguage,
+          language,
+        );
+        if (
+          item.publishedData === undefined &&
+          Object.keys(item.publishedDataByLanguage ?? {}).length === 0 &&
+          item.draftData === undefined &&
+          Object.keys(nextDraftDataByLanguage).length === 0
+        ) {
+          await ctx.db.delete(item._id);
+          continue;
+        }
+        await ctx.db.patch(item._id, {
+          draftDataByLanguage: nextDraftDataByLanguage,
+          draftUpdatedAt: undefined,
+          updatedAt: now,
+        });
       }
-      await ctx.db.patch(item._id, {
-        draftData: undefined,
-        draftUpdatedAt: undefined,
-        updatedAt: now,
-      });
     }
 
     return null;

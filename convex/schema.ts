@@ -35,6 +35,8 @@ export default defineSchema({
     slug: v.string(),
     publishedData: v.optional(v.any()),
     draftData: v.optional(v.any()),
+    publishedDataByLanguage: v.optional(v.record(v.string(), v.any())),
+    draftDataByLanguage: v.optional(v.record(v.string(), v.any())),
     publishedAt: v.optional(v.number()),
     draftUpdatedAt: v.optional(v.number()),
     updatedAt: v.number(),

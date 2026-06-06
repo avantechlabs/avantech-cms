@@ -82,11 +82,12 @@ export function useCmsPage(projectSlug, pageSlug, language = "fr") {
   return publishedFields ?? {};
 }
 
-export function useCmsCollection(projectSlug, collectionKey) {
+export function useCmsCollection(projectSlug, collectionKey, language = "fr") {
   const query = isEditMode() ? PREVIEW_COLLECTION_QUERY : PUBLISHED_COLLECTION_QUERY;
   return useQuery(query, {
     projectSlug,
     collectionKey,
+    language,
   }) ?? [];
 }
 
@@ -107,11 +108,12 @@ export function CmsContentProvider({
     () => ({
       fields: publishedFields,
       isLoaded: publishedFields !== undefined,
+      language,
       mode,
       pageSlug,
       projectSlug,
     }),
-    [publishedFields, mode, pageSlug, projectSlug],
+    [publishedFields, language, mode, pageSlug, projectSlug],
   );
 
   return (

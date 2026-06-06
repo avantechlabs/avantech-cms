@@ -945,6 +945,86 @@ test("collection item drafts save by nested path and preview over published data
   ]);
 });
 
+test("collection item drafts publish by selected language without overwriting global records", async () => {
+  const t = convexTest(schema, modules);
+  await t.mutation(api.cms.ensureSeedData);
+  await t.mutation(api.cms.seedPublishedCollectionItems, {
+    projectSlug,
+    collectionKey: "services",
+    items: [
+      {
+        slug: "compagnonnage",
+        data: {
+          title: "Companionship and presence at home",
+          body: "Conversation, reading, walks, board games.",
+        },
+      },
+    ],
+  });
+
+  await t.mutation(api.cms.saveCollectionItemDraft, {
+    projectSlug,
+    collectionKey: "services",
+    slug: "compagnonnage",
+    language: "fr",
+    path: "title",
+    value: "Compagnonnage et presence a domicile",
+  });
+  await t.mutation(api.cms.saveCollectionItemDraft, {
+    projectSlug,
+    collectionKey: "services",
+    slug: "compagnonnage",
+    language: "fr",
+    path: "body",
+    value: "Conversation, lecture, marche, jeux de societe.",
+  });
+
+  const frenchPreview = await t.query(api.cms.listPreviewCollectionItems, {
+    projectSlug,
+    collectionKey: "services",
+    language: "fr",
+  });
+  const englishBeforePublish = await t.query(api.cms.listPublishedCollectionItems, {
+    projectSlug,
+    collectionKey: "services",
+    language: "en",
+  });
+
+  await t.mutation(api.cms.publishSite, { projectSlug, language: "fr" });
+
+  const frenchPublished = await t.query(api.cms.listPublishedCollectionItems, {
+    projectSlug,
+    collectionKey: "services",
+    language: "fr",
+  });
+  const englishAfterPublish = await t.query(api.cms.listPublishedCollectionItems, {
+    projectSlug,
+    collectionKey: "services",
+    language: "en",
+  });
+
+  expect(frenchPreview).toEqual([
+    {
+      slug: "compagnonnage",
+      data: {
+        title: "Compagnonnage et presence a domicile",
+        body: "Conversation, lecture, marche, jeux de societe.",
+      },
+    },
+  ]);
+  expect(frenchPublished).toEqual(frenchPreview);
+  expect(englishBeforePublish).toEqual([
+    {
+      slug: "compagnonnage",
+      data: {
+        title: "Companionship and presence at home",
+        body: "Conversation, reading, walks, board games.",
+      },
+    },
+  ]);
+  expect(englishAfterPublish).toEqual(englishBeforePublish);
+});
+
 test("object and list collection drafts preview, publish, and discard through site lifecycle", async () => {
   const t = convexTest(schema, modules);
   await t.mutation(api.cms.ensureSeedData);

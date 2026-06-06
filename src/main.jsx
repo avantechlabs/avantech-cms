@@ -338,7 +338,9 @@ function Cms() {
   const activeCollectionKey = selectedRecord?.collectionKey ?? selectedCollectionKey;
   const previewCollectionItems = useQuery(
     api.cms.listPreviewCollectionItems,
-    activeCollectionKey ? { projectSlug, collectionKey: activeCollectionKey } : "skip",
+    activeCollectionKey
+      ? { projectSlug, collectionKey: activeCollectionKey, language: selectedLanguage }
+      : "skip",
   ) ?? [];
   const saveCollectionItemDraft = useMutation(api.cms.saveCollectionItemDraft);
   const createCollectionItemDraft = useMutation(api.cms.createCollectionItemDraft);
@@ -860,6 +862,7 @@ function Cms() {
               projectSlug,
               collectionKey: selectedRecord.collectionKey,
               slug: selectedRecord.itemSlug,
+              language: selectedLanguage,
               path,
               value,
             })
@@ -893,6 +896,7 @@ function Cms() {
               projectSlug,
               collectionKey: selectedRecord.collectionKey,
               slug: selectedRecord.itemSlug,
+              language: selectedLanguage,
               path,
               value: `convex-storage:${storageId}`,
             });
@@ -915,6 +919,7 @@ function Cms() {
               projectSlug,
               collectionKey: selectedCollection.key,
               slug,
+              language: selectedLanguage,
               data,
             }).then(() => {
               setSelectedRecord({ collectionKey: selectedCollection.key, itemSlug: slug });

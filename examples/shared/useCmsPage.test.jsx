@@ -208,7 +208,25 @@ test("useCmsCollection reads published records through a public string query", (
   ]);
   expect(queryState.calls).toContainEqual({
     query: "cms:listPublishedCollectionItems",
-    args: { projectSlug: "project-a", collectionKey: "projects" },
+    args: { projectSlug: "project-a", collectionKey: "projects", language: "fr" },
+  });
+});
+
+test("useCmsCollection can read records for a selected language", () => {
+  queryState.result = [
+    { slug: "brand-refresh", data: { card: { title: "Brand refresh" } } },
+  ];
+
+  function CollectionConsumer() {
+    useCmsCollection("project-a", "projects", "en");
+    return <span>Loaded</span>;
+  }
+
+  renderToStaticMarkup(<CollectionConsumer />);
+
+  expect(queryState.calls).toContainEqual({
+    query: "cms:listPublishedCollectionItems",
+    args: { projectSlug: "project-a", collectionKey: "projects", language: "en" },
   });
 });
 
@@ -232,6 +250,6 @@ test("useCmsCollection reads preview records in edit mode", () => {
   ]);
   expect(queryState.calls).toContainEqual({
     query: "cms:listPreviewCollectionItems",
-    args: { projectSlug: "project-a", collectionKey: "projects" },
+    args: { projectSlug: "project-a", collectionKey: "projects", language: "fr" },
   });
 });
