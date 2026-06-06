@@ -4,6 +4,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host 0.0.0.0 --port 3000",
+    "build": "vite build",
     "dev:example": "pnpm --filter site-demo dev",
     "dev:project-a": "pnpm --filter site-demo dev",
     "dev:project-b": "pnpm --filter sable-demo dev",
