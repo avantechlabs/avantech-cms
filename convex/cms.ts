@@ -4,6 +4,7 @@ import type { MutationCtx, QueryCtx } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 
 const HOME_PAGE_SLUG = "home";
+const DEFAULT_LANGUAGE = "fr";
 const STORAGE_REFERENCE_PREFIX = "convex-storage:";
 
 const SEEDED_PROJECTS = [
@@ -68,6 +69,7 @@ const SEEDED_COLLECTIONS: Record<string, Record<string, { slug: string; data: un
 };
 
 const fieldsValidator = v.record(v.string(), v.string());
+const languageValidator = v.optional(v.union(v.literal("fr"), v.literal("en")));
 const collectionItemsValidator = v.array(
   v.object({
     slug: v.string(),
@@ -189,6 +191,28 @@ function mergeDraftOverPublished(published: unknown, draft: unknown): unknown {
 
 function valuesEqual(a: unknown, b: unknown) {
   return JSON.stringify(a) === JSON.stringify(b);
+}
+
+function languageOrDefault(language: string | undefined) {
+  return language ?? DEFAULT_LANGUAGE;
+}
+
+function fieldsForLanguage(
+  fieldsByLanguage: Record<string, Record<string, string>> | undefined,
+  language: string,
+) {
+  return fieldsByLanguage?.[language] ?? {};
+}
+
+function setFieldsForLanguage(
+  fieldsByLanguage: Record<string, Record<string, string>> | undefined,
+  language: string,
+  fields: Record<string, string>,
+) {
+  return {
+    ...(fieldsByLanguage ?? {}),
+    [language]: fields,
+  };
 }
 
 function hasMeaningfulCollectionDraft(item: Doc<"collectionItems">) {
@@ -317,6 +341,8 @@ async function upsertPageContent(
   patch: {
     draftFields?: Record<string, string>;
     publishedFields?: Record<string, string>;
+    draftFieldsByLanguage?: Record<string, Record<string, string>>;
+    publishedFieldsByLanguage?: Record<string, Record<string, string>>;
     lastSeenAt?: Record<string, number>;
     draftUpdatedAt?: number;
     publishedAt?: number;
@@ -621,14 +647,24 @@ export const getPreviewContent = query({
   args: {
     projectSlug: v.string(),
     pageSlug: v.string(),
+    language: languageValidator,
   },
   handler: async (ctx, args) => {
     const result = await requireContent(ctx, args.projectSlug, args.pageSlug);
     if (!result?.content) return {};
+    const language = languageOrDefault(args.language);
+    const publishedFields =
+      args.language === undefined
+        ? result.content.publishedFields
+        : fieldsForLanguage(result.content.publishedFieldsByLanguage, language);
+    const draftFields =
+      args.language === undefined
+        ? result.content.draftFields
+        : fieldsForLanguage(result.content.draftFieldsByLanguage, language);
 
     return await resolveStorageFieldMap(ctx, {
-      ...result.content.publishedFields,
-      ...result.content.draftFields,
+      ...publishedFields,
+      ...draftFields,
     });
   },
 });
@@ -988,6 +1024,7 @@ export const seedDiscoveredFields = mutation({
   args: {
     projectSlug: v.string(),
     pageSlug: v.string(),
+    language: languageValidator,
     fields: discoveredFieldsValidator,
   },
   handler: async (ctx, args) => {
@@ -995,8 +1032,19 @@ export const seedDiscoveredFields = mutation({
     if (!result) return null;
 
     const content = result.content;
-    const draftFields = { ...(content?.draftFields ?? {}) };
-    const publishedFields = { ...(content?.publishedFields ?? {}) };
+    const language = languageOrDefault(args.language);
+    const draftFields =
+      args.language === undefined
+        ? { ...(content?.draftFields ?? {}) }
+        : {
+            ...fieldsForLanguage(content?.draftFieldsByLanguage, language),
+          };
+    const publishedFields =
+      args.language === undefined
+        ? { ...(content?.publishedFields ?? {}) }
+        : {
+            ...fieldsForLanguage(content?.publishedFieldsByLanguage, language),
+          };
     const lastSeenAt = { ...(content?.lastSeenAt ?? {}) };
 
     const now = Date.now();
@@ -1015,10 +1063,21 @@ export const seedDiscoveredFields = mutation({
     // Idempotent: re-discovering the same fields writes nothing, so reopening
     // the editor doesn't churn updatedAt / re-fire content subscriptions.
     if (changed) {
-      await upsertPageContent(ctx, result.project._id, result.page._id, content, {
-        publishedFields,
-        lastSeenAt,
-      });
+      if (args.language === undefined) {
+        await upsertPageContent(ctx, result.project._id, result.page._id, content, {
+          publishedFields,
+          lastSeenAt,
+        });
+      } else {
+        await upsertPageContent(ctx, result.project._id, result.page._id, content, {
+          publishedFieldsByLanguage: setFieldsForLanguage(
+            content?.publishedFieldsByLanguage,
+            language,
+            publishedFields,
+          ),
+          lastSeenAt,
+        });
+      }
     }
 
     return await resolveStorageFieldMap(ctx, {
@@ -1046,21 +1105,38 @@ export const saveDraft = mutation({
   args: {
     projectSlug: v.string(),
     pageSlug: v.string(),
+    language: languageValidator,
     fields: fieldsValidator,
   },
   handler: async (ctx, args) => {
     const result = await requireContent(ctx, args.projectSlug, args.pageSlug);
     if (!result) return null;
 
-    const nextDraftFields = {
-      ...(result.content?.draftFields ?? {}),
-      ...args.fields,
-    };
+    const existingDraftFields =
+      args.language === undefined
+        ? result.content?.draftFields ?? {}
+        : fieldsForLanguage(
+            result.content?.draftFieldsByLanguage,
+            languageOrDefault(args.language),
+          );
+    const nextDraftFields = { ...existingDraftFields, ...args.fields };
 
-    await upsertPageContent(ctx, result.project._id, result.page._id, result.content, {
-      draftFields: nextDraftFields,
-      draftUpdatedAt: Date.now(),
-    });
+    if (args.language === undefined) {
+      await upsertPageContent(ctx, result.project._id, result.page._id, result.content, {
+        draftFields: nextDraftFields,
+        draftUpdatedAt: Date.now(),
+      });
+    } else {
+      const language = languageOrDefault(args.language);
+      await upsertPageContent(ctx, result.project._id, result.page._id, result.content, {
+        draftFieldsByLanguage: setFieldsForLanguage(
+          result.content?.draftFieldsByLanguage,
+          language,
+          nextDraftFields,
+        ),
+        draftUpdatedAt: Date.now(),
+      });
+    }
 
     return nextDraftFields;
   },

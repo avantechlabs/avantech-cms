@@ -21,6 +21,8 @@ export default defineSchema({
     pageId: v.id("pages"),
     draftFields: v.record(v.string(), v.string()),
     publishedFields: v.record(v.string(), v.string()),
+    draftFieldsByLanguage: v.optional(v.record(v.string(), v.record(v.string(), v.string()))),
+    publishedFieldsByLanguage: v.optional(v.record(v.string(), v.record(v.string(), v.string()))),
     lastSeenAt: v.optional(v.record(v.string(), v.number())),
     draftUpdatedAt: v.optional(v.number()),
     publishedAt: v.optional(v.number()),

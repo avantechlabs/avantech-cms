@@ -340,6 +340,44 @@ test("image draft uploads are isolated by project slug and page slug", async () 
   expect(projectB["hero.image"]).toBe("/project-b-published.jpg");
 });
 
+test("page draft fields are isolated by editor language", async () => {
+  const t = convexTest(schema, modules);
+  await t.mutation(api.cms.ensureSeedData);
+
+  await t.mutation(api.cms.seedDiscoveredFields, {
+    projectSlug,
+    pageSlug,
+    language: "fr",
+    fields: [{ id: "button.cta", value: "Contactez-nous" }],
+  });
+  await t.mutation(api.cms.saveDraft, {
+    projectSlug,
+    pageSlug,
+    language: "fr",
+    fields: { "button.cta": "Parlez-nous" },
+  });
+  await t.mutation(api.cms.saveDraft, {
+    projectSlug,
+    pageSlug,
+    language: "en",
+    fields: { "button.cta": "Contact us" },
+  });
+
+  const frenchPreview = await t.query(api.cms.getPreviewContent, {
+    projectSlug,
+    pageSlug,
+    language: "fr",
+  });
+  const englishPreview = await t.query(api.cms.getPreviewContent, {
+    projectSlug,
+    pageSlug,
+    language: "en",
+  });
+
+  expect(frenchPreview["button.cta"]).toBe("Parlez-nous");
+  expect(englishPreview["button.cta"]).toBe("Contact us");
+});
+
 test("website-declared pages sync, isolate drafts, and publish or discard project-wide", async () => {
   const t = convexTest(schema, modules);
   await t.mutation(api.cms.ensureSeedData);
