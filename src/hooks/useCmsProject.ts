@@ -28,6 +28,7 @@ export function useCmsProject(
 
   const publishedFields = page?.publishedFields ?? {};
   const draftFields = page?.draftFields ?? {};
+  const pageLanguage = page?.language ?? null;
 
   const previewFields = useMemo(
     () => ({ ...publishedFields, ...draftFields }),
@@ -60,6 +61,7 @@ export function useCmsProject(
     pages,
     publishedFields,
     previewFields,
+    pageLanguage,
     draftFieldIds,
     siteDraftCount: siteDraftState?.totalDraftCount ?? draftFieldIds.length,
     collectionDrafts: siteDraftState?.collectionDrafts ?? [],

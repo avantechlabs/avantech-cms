@@ -683,6 +683,7 @@ export const getPage = query({
     return {
       project: result.project,
       page: result.page,
+      language,
       draftFields: await resolveStorageFieldMap(
         ctx,
         draftFields,

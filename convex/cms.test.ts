@@ -373,9 +373,16 @@ test("page draft fields are isolated by editor language", async () => {
     pageSlug,
     language: "en",
   });
+  const frenchPage = await t.query(api.cms.getPage, {
+    projectSlug,
+    pageSlug,
+    language: "fr",
+  });
 
   expect(frenchPreview["button.cta"]).toBe("Parlez-nous");
   expect(englishPreview["button.cta"]).toBe("Contact us");
+  expect(frenchPage?.language).toBe("fr");
+  expect(frenchPage?.draftFields["button.cta"]).toBe("Parlez-nous");
 });
 
 test("published page fields read the requested language with legacy fallback", async () => {

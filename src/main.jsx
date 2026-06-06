@@ -288,6 +288,7 @@ function Cms() {
     page,
     pages,
     previewFields,
+    pageLanguage,
     publishedFields,
     draftFieldIds,
     siteDraftCount,
@@ -336,6 +337,7 @@ function Cms() {
     .sort()
     .join("|");
   const activeCollectionKey = selectedRecord?.collectionKey ?? selectedCollectionKey;
+  const previewFieldsReadyForLanguage = pageLanguage === selectedLanguage;
   const previewCollectionItems = useQuery(
     api.cms.listPreviewCollectionItems,
     activeCollectionKey
@@ -351,6 +353,7 @@ function Cms() {
     previewOrigin,
     projectSlug,
     pageSlug: selectedPageSlug,
+    frameKey: siteUrl,
     onReady: () => {
       send({ type: "cms:discover-fields" });
       send({ type: "cms:set-language", language: selectedLanguage });
@@ -358,7 +361,7 @@ function Cms() {
       send({ type: "cms:set-theme", theme, tokens: BRIDGE_TOKENS[theme] });
       // Resend current content + draft markers so an iframe reload re-hydrates
       // (onReady fires again on every reload at the same origin).
-      if (previewFields && Object.keys(previewFields).length) {
+      if (previewFieldsReadyForLanguage && previewFields && Object.keys(previewFields).length) {
         send({ type: "cms:apply-fields", fields: previewFields });
       }
       send({ type: "cms:set-drafts", fieldIds: draftFieldIds });
@@ -421,10 +424,10 @@ function Cms() {
 
   // Keep the framed site showing draft ⊕ published.
   useEffect(() => {
-    if (previewFields && Object.keys(previewFields).length) {
+    if (previewFieldsReadyForLanguage && previewFields && Object.keys(previewFields).length) {
       send({ type: "cms:apply-fields", fields: previewFields });
     }
-  }, [previewFields, send]);
+  }, [previewFieldsReadyForLanguage, previewFields, send]);
 
   // Mark which fields carry unpublished drafts (visible material).
   useEffect(() => {

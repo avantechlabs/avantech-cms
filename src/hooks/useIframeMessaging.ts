@@ -12,6 +12,7 @@ interface UseIframeMessagingOptions {
   previewOrigin: string;
   projectSlug: string;
   pageSlug: string;
+  frameKey?: string;
   onReady: () => void;
   onFields: (fields: FieldData[]) => void;
   onCollections?: (collections: CollectionDefinition[]) => void;
@@ -24,7 +25,7 @@ interface UseIframeMessagingOptions {
 }
 
 export function useIframeMessaging(options: UseIframeMessagingOptions) {
-  const { previewOrigin, projectSlug, pageSlug } = options;
+  const { previewOrigin, projectSlug, pageSlug, frameKey } = options;
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
   // Always call the latest callbacks without re-subscribing the listener.
@@ -81,7 +82,7 @@ export function useIframeMessaging(options: UseIframeMessagingOptions) {
 
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
-  }, [previewOrigin, projectSlug, pageSlug]);
+  }, [previewOrigin, projectSlug, pageSlug, frameKey]);
 
   return { iframeRef, send };
 }

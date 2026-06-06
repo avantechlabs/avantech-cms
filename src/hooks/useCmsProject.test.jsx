@@ -24,6 +24,7 @@ vi.mock("convex/react", () => ({
     if (args?.projectSlug && args?.pageSlug) {
       return {
         page: { slug: args.pageSlug, title: "Home", path: "/" },
+        language: args.language,
         publishedFields: {},
         draftFields: {},
       };
@@ -41,8 +42,9 @@ beforeEach(() => {
 });
 
 test("loads page state for the selected editor language", () => {
+  let result;
   function Consumer() {
-    useCmsProject("project-a", "home", "en");
+    result = useCmsProject("project-a", "home", "en");
     return null;
   }
 
@@ -57,4 +59,6 @@ test("loads page state for the selected editor language", () => {
     pageSlug: "home",
     language: "en",
   });
+  expect(result.pageLanguage).toBe("en");
+  expect(result.siteUrl).toContain("cmsLanguage=en");
 });
