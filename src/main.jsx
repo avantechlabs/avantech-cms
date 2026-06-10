@@ -1,6 +1,11 @@
 import React, { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { ConvexProvider, ConvexReactClient, useMutation, useQuery } from "convex/react";
+import { ConvexReactClient, useMutation, useQuery } from "convex/react";
+import {
+  ConvexAuthProvider,
+  useAuthActions,
+  useConvexAuth,
+} from "@convex-dev/auth/react";
 import { api } from "../convex/_generated/api.js";
 import { CollectionBrowserPanel } from "./CollectionBrowserPanel.jsx";
 import { CollectionsRailSection } from "./CollectionsRailSection.jsx";
@@ -32,10 +37,12 @@ const BRIDGE_TOKENS = {
   },
 };
 
-function getProjectSlug() {
-  const [, first, second] = window.location.pathname.split("/");
-  if (first === "cms" && second) return second;
-  return first || "project-a";
+export function getCmsRoute(pathname = window.location.pathname) {
+  const [, first, second] = pathname.split("/");
+  if (!first || first === "cms") {
+    return second ? { kind: "editor", projectSlug: second } : { kind: "dashboard" };
+  }
+  return { kind: "editor", projectSlug: first };
 }
 
 // Owners never see raw field ids. Build a plain, sentence-cased phrase and keep
@@ -75,9 +82,87 @@ function CmsApp() {
     );
   }
   return (
-    <ConvexProvider client={convexClient}>
-      {window.location.pathname.startsWith("/admin/projects") ? <ProjectsAdmin /> : <Cms />}
-    </ConvexProvider>
+    <ConvexAuthProvider client={convexClient}>
+      <AuthGate>
+        {window.location.pathname.startsWith("/admin/projects") ? <ProjectsAdmin /> : <Cms />}
+      </AuthGate>
+    </ConvexAuthProvider>
+  );
+}
+
+function AuthGate({ children }) {
+  const { isLoading, isAuthenticated } = useConvexAuth();
+
+  if (isLoading) {
+    return (
+      <div className="missingConfig">
+        <h1>Avantech CMS</h1>
+        <p>Checking your session...</p>
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) return <SignInPanel />;
+
+  return children;
+}
+
+function SignInPanel() {
+  const { signIn } = useAuthActions();
+  const [flow, setFlow] = useState("signIn");
+  const [status, setStatus] = useState("idle");
+
+  function onSubmit(event) {
+    event.preventDefault();
+    setStatus("submitting");
+    const formData = new FormData(event.currentTarget);
+    signIn("password", formData)
+      .then(() => setStatus("idle"))
+      .catch((error) => {
+        console.error(error);
+        setStatus("error");
+      });
+  }
+
+  return (
+    <main className="missingConfig">
+      <h1>Avantech CMS</h1>
+      <form onSubmit={onSubmit}>
+        <label>
+          <span>Email</span>
+          <input name="email" type="email" autoComplete="email" required />
+        </label>
+        <label>
+          <span>Password</span>
+          <input
+            name="password"
+            type="password"
+            autoComplete={flow === "signIn" ? "current-password" : "new-password"}
+            minLength={8}
+            required
+          />
+        </label>
+        <input name="flow" type="hidden" value={flow} />
+        {status === "error" && (
+          <p role="alert">
+            Could not {flow === "signIn" ? "sign in" : "create this account"}. Check the email
+            and password, then try again.
+          </p>
+        )}
+        <button type="submit" disabled={status === "submitting"}>
+          {status === "submitting" ? "Please wait..." : flow === "signIn" ? "Sign in" : "Create account"}
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            setStatus("idle");
+            setFlow((current) => (current === "signIn" ? "signUp" : "signIn"));
+          }}
+        >
+          {flow === "signIn" ? "Create an account" : "Sign in instead"}
+        </button>
+      </form>
+    </main>
   );
 }
 
@@ -101,9 +186,13 @@ function ProjectsAdmin() {
   const ensureSeedData = useMutation(api.cms.ensureSeedData);
   const createProject = useMutation(api.cms.createProject);
   const updateProject = useMutation(api.cms.updateProject);
+  const addSiteOwner = useMutation(api.cms.addSiteOwner);
+  const removeSiteOwner = useMutation(api.cms.removeSiteOwner);
   const [draft, setDraft] = useState(emptyProjectForm);
   const [editingSlug, setEditingSlug] = useState(null);
   const [saveState, setSaveState] = useState("idle");
+  const [ownerEmail, setOwnerEmail] = useState("");
+  const [ownerState, setOwnerState] = useState("idle");
 
   useEffect(() => {
     ensureSeedData();
@@ -112,6 +201,10 @@ function ProjectsAdmin() {
   const editingProject = editingSlug
     ? projects.find((project) => project.slug === editingSlug)
     : null;
+  const ownerEmails = useQuery(
+    api.cms.listSiteOwners,
+    editingProject ? { projectSlug: editingProject.slug } : "skip",
+  ) ?? [];
   const canSave =
     draft.slug.trim() &&
     draft.name.trim() &&
@@ -127,6 +220,8 @@ function ProjectsAdmin() {
     setEditingSlug(null);
     setDraft(emptyProjectForm);
     setSaveState("idle");
+    setOwnerEmail("");
+    setOwnerState("idle");
   }
 
   function startEdit(project) {
@@ -138,6 +233,35 @@ function ProjectsAdmin() {
       editUrl: project.editUrl,
     });
     setSaveState("idle");
+    setOwnerEmail("");
+    setOwnerState("idle");
+  }
+
+  function onAddOwner(event) {
+    event?.preventDefault();
+    if (!editingProject || !ownerEmail.trim() || ownerState === "saving") return;
+
+    setOwnerState("saving");
+    addSiteOwner({ projectSlug: editingProject.slug, email: ownerEmail })
+      .then(() => {
+        setOwnerEmail("");
+        setOwnerState("saved");
+      })
+      .catch((error) => {
+        console.error(error);
+        setOwnerState("error");
+      });
+  }
+
+  function onRemoveOwner(email) {
+    if (!editingProject) return;
+    setOwnerState("saving");
+    removeSiteOwner({ projectSlug: editingProject.slug, email })
+      .then(() => setOwnerState("saved"))
+      .catch((error) => {
+        console.error(error);
+        setOwnerState("error");
+      });
   }
 
   function onSubmit(event) {
@@ -182,7 +306,7 @@ function ProjectsAdmin() {
       <header className="adminTop">
         <div>
           <p className="adminEyebrow">Admin</p>
-          <h1>Projects</h1>
+          <h1>Sites</h1>
         </div>
         <a className="barBtn primary" href={`/cms/${projects[0]?.slug ?? "project-a"}`}>
           Open editor
@@ -194,7 +318,7 @@ function ProjectsAdmin() {
           <div className="adminPanelHead">
             <h2>Registered sites</h2>
             <button className="barBtn" type="button" onClick={resetForm}>
-              New project
+              New site
             </button>
           </div>
           <div className="projectList">
@@ -212,14 +336,14 @@ function ProjectsAdmin() {
                 </article>
               ))
             ) : (
-              <p className="adminEmpty">No projects registered yet.</p>
+              <p className="adminEmpty">No sites registered yet.</p>
             )}
           </div>
         </div>
 
         <form className="adminPanel projectForm" onSubmit={onSubmit}>
           <div className="adminPanelHead">
-            <h2>{editingProject ? "Edit project" : "Create project"}</h2>
+            <h2>{editingProject ? "Edit site" : "Create site"}</h2>
             {saveState === "saved" && <span className="savePill">Saved</span>}
             {saveState === "error" && <span className="savePill error">Couldn’t save</span>}
           </div>
@@ -263,7 +387,7 @@ function ProjectsAdmin() {
 
           <div className="adminActions">
             <button className="barBtn primary" type="submit" disabled={!canSave}>
-              {saveState === "saving" ? "Saving…" : editingProject ? "Update project" : "Create project"}
+              {saveState === "saving" ? "Saving…" : editingProject ? "Update site" : "Create site"}
             </button>
             {editingProject && (
               <a className="barBtn" href={`/cms/${editingProject.slug}`}>
@@ -271,6 +395,54 @@ function ProjectsAdmin() {
               </a>
             )}
           </div>
+
+          {editingProject && (
+            <section className="ownerManager" aria-label="Site owners">
+              <div className="adminPanelHead">
+                <h2>Site owners</h2>
+                {ownerState === "saved" && <span className="savePill">Saved</span>}
+                {ownerState === "error" && <span className="savePill error">Couldn’t update</span>}
+              </div>
+              <div className="ownerAdd">
+                <label>
+                  <span>Owner email</span>
+                  <input
+                    type="email"
+                    value={ownerEmail}
+                    onChange={(event) => setOwnerEmail(event.target.value)}
+                    placeholder="owner@example.com"
+                  />
+                </label>
+                <button
+                  className="barBtn"
+                  type="button"
+                  onClick={onAddOwner}
+                  disabled={!ownerEmail.trim() || ownerState === "saving"}
+                >
+                  Add owner
+                </button>
+              </div>
+              <div className="ownerList">
+                {ownerEmails.length > 0 ? (
+                  ownerEmails.map((email) => (
+                    <div className="ownerRow" key={email}>
+                      <span>{email}</span>
+                      <button
+                        className="barBtn"
+                        type="button"
+                        onClick={() => onRemoveOwner(email)}
+                        disabled={ownerState === "saving"}
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  ))
+                ) : (
+                  <p className="adminEmpty">No site owners assigned yet.</p>
+                )}
+              </div>
+            </section>
+          )}
         </form>
       </section>
     </main>
@@ -278,7 +450,77 @@ function ProjectsAdmin() {
 }
 
 function Cms() {
-  const projectSlug = getProjectSlug();
+  const route = getCmsRoute();
+  const projects = useQuery(api.cms.listProjects);
+
+  if (projects === undefined) {
+    return <AccessMessage title="Loading sites" body="Checking your site access." />;
+  }
+
+  if (route.kind === "dashboard") {
+    return <CmsDashboard projects={projects} />;
+  }
+
+  const project = projects.find((item) => item.slug === route.projectSlug);
+  if (!project) {
+    return projects.length === 0 ? (
+      <NoAccess />
+    ) : (
+      <AccessMessage
+        title="Access denied"
+        body="You do not have access to this site."
+        action={<a className="barBtn primary" href="/cms">Return to sites</a>}
+      />
+    );
+  }
+
+  return <CmsEditor projectSlug={project.slug} />;
+}
+
+function CmsDashboard({ projects }) {
+  if (projects.length === 0) return <NoAccess />;
+
+  return (
+    <main className="accessShell">
+      <header className="accessHeader">
+        <p className="adminEyebrow">Avantech CMS</p>
+        <h1>Sites</h1>
+      </header>
+      <section className="siteGrid" aria-label="Assigned sites">
+        {projects.map((project) => (
+          <a className="siteTile" href={`/cms/${project.slug}`} key={project._id}>
+            <strong>{project.name}</strong>
+            <span>{project.slug}</span>
+          </a>
+        ))}
+      </section>
+    </main>
+  );
+}
+
+function NoAccess() {
+  return (
+    <AccessMessage
+      title="No site access"
+      body="This email has not been assigned to an Avantech CMS site."
+    />
+  );
+}
+
+function AccessMessage({ title, body, action = null }) {
+  return (
+    <main className="accessShell centered">
+      <section className="accessPanel">
+        <p className="adminEyebrow">Avantech CMS</p>
+        <h1>{title}</h1>
+        <p>{body}</p>
+        {action}
+      </section>
+    </main>
+  );
+}
+
+function CmsEditor({ projectSlug }) {
   const [selectedPageSlug, setSelectedPageSlug] = useState("home");
   const [selectedLanguage, setSelectedLanguage] = useState("fr");
 
@@ -295,7 +537,6 @@ function Cms() {
     collectionDrafts,
     previewOrigin,
     siteUrl,
-    ensureSeedData,
   } = useCmsProject(projectSlug, selectedPageSlug, selectedLanguage);
 
   const {
@@ -336,6 +577,8 @@ function Cms() {
     .map((draft) => `${draft.collectionKey}:${draft.slug}`)
     .sort()
     .join("|");
+  const cmsAccess = useQuery(api.cms.getCmsAccess);
+  const canSyncStructure = cmsAccess?.isAdmin === true;
   const activeCollectionKey = selectedRecord?.collectionKey ?? selectedCollectionKey;
   const previewFieldsReadyForLanguage = pageLanguage === selectedLanguage;
   const previewCollectionItems = useQuery(
@@ -374,7 +617,7 @@ function Cms() {
 
       const editable = nextFields.filter((f) => f.editable !== false);
       const signature = editable.map((f) => f.id).sort().join("|");
-      if (signature && signature !== seededSignatureRef.current) {
+      if (canSyncStructure && signature && signature !== seededSignatureRef.current) {
         seededSignatureRef.current = signature;
         seedDiscoveredFields({
           projectSlug,
@@ -394,6 +637,7 @@ function Cms() {
           path: String(item.path),
         }));
       if (!normalizedPages.length) return;
+      if (!canSyncStructure) return;
 
       syncPages({ projectSlug, pages: normalizedPages }).catch((error) => {
         console.error(error);
@@ -441,10 +685,6 @@ function Cms() {
   useEffect(() => {
     send({ type: "cms:set-draft-records", records: collectionDrafts });
   }, [collectionDraftSignature, send]);
-
-  useEffect(() => {
-    ensureSeedData();
-  }, [ensureSeedData]);
 
   useEffect(() => {
     setSelectedPageSlug("home");
@@ -950,4 +1190,7 @@ function Cms() {
   );
 }
 
-createRoot(document.getElementById("root")).render(<CmsApp />);
+const root = document.getElementById("root");
+if (root) {
+  createRoot(root).render(<CmsApp />);
+}

@@ -1,13 +1,25 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
+import { authTables } from "@convex-dev/auth/server";
 
 export default defineSchema({
+  ...authTables,
+
   projects: defineTable({
     slug: v.string(),
     name: v.string(),
     origin: v.string(),
     editUrl: v.string(),
   }).index("by_slug", ["slug"]),
+
+  siteMembers: defineTable({
+    projectId: v.id("projects"),
+    email: v.string(),
+    createdAt: v.number(),
+  })
+    .index("by_projectId", ["projectId"])
+    .index("by_projectId_and_email", ["projectId", "email"])
+    .index("by_email", ["email"]),
 
   pages: defineTable({
     projectId: v.id("projects"),

@@ -1,14 +1,31 @@
 /// <reference types="vite/client" />
 import { convexTest } from "convex-test";
 import type { TestConvex } from "convex-test";
-import { expect, test } from "vitest";
+import { beforeEach, expect, test } from "vitest";
 import { api } from "./_generated/api";
 import schema from "./schema";
 
 const modules = import.meta.glob("./**/*.ts");
 const projectSlug = "project-a";
 const pageSlug = "home";
+const adminEmail = "admin@avantech.test";
 type CmsTest = TestConvex<typeof schema>;
+
+function asUser(t: CmsTest, email: string) {
+  return t.withIdentity({ email });
+}
+
+function asAdmin(t: CmsTest) {
+  return asUser(t, adminEmail);
+}
+
+function asConvexAuthUser(t: CmsTest, userId: string) {
+  return t.withIdentity({ subject: `${userId}|test-session` });
+}
+
+beforeEach(() => {
+  process.env.CMS_ADMIN_EMAIL = adminEmail;
+});
 
 async function storeImage(t: CmsTest, contents: string) {
   return await t.run(async (ctx) => {
@@ -48,8 +65,8 @@ test("seeded demo project URLs match local example dev ports", async () => {
   const t = convexTest(schema, modules);
   await t.mutation(api.cms.ensureSeedData);
 
-  const projectA = await t.query(api.cms.getProjectBySlug, { slug: "project-a" });
-  const projectB = await t.query(api.cms.getProjectBySlug, { slug: "project-b" });
+  const projectA = await asAdmin(t).query(api.cms.getProjectBySlug, { slug: "project-a" });
+  const projectB = await asAdmin(t).query(api.cms.getProjectBySlug, { slug: "project-b" });
 
   expect(projectA?.origin).toBe("http://localhost:3001");
   expect(projectA?.editUrl).toBe("http://localhost:3001");
@@ -57,10 +74,128 @@ test("seeded demo project URLs match local example dev ports", async () => {
   expect(projectB?.editUrl).toBe("http://localhost:3003");
 });
 
+test("admin email controls access to the CMS project list", async () => {
+  process.env.CMS_ADMIN_EMAIL = "  " + adminEmail.toUpperCase() + "  ";
+  const t = convexTest(schema, modules);
+  await t.mutation(api.cms.ensureSeedData);
+
+  await expect(t.query(api.cms.listProjects)).rejects.toThrow("Not authenticated");
+
+  const projects = await asAdmin(t).query(api.cms.listProjects);
+  expect(projects.map((item) => item.slug)).toEqual(["project-a", "project-b"]);
+});
+
+test("admin access resolves the email from a Convex Auth user record", async () => {
+  const t = convexTest(schema, modules);
+  await t.mutation(api.cms.ensureSeedData);
+  const userId = await t.run(async (ctx) => {
+    return await ctx.db.insert("users", { email: adminEmail });
+  });
+
+  const access = await asConvexAuthUser(t, userId).query(api.cms.getCmsAccess);
+  const projects = await asConvexAuthUser(t, userId).query(api.cms.listProjects);
+
+  expect(access).toEqual({ isAdmin: true });
+  expect(projects.map((item) => item.slug)).toEqual(["project-a", "project-b"]);
+});
+
+test("admin can assign normalized owner emails to a site once", async () => {
+  const t = convexTest(schema, modules);
+  await t.mutation(api.cms.ensureSeedData);
+
+  await asAdmin(t).mutation(api.cms.addSiteOwner, {
+    projectSlug: "project-a",
+    email: "  OWNER@Example.COM  ",
+  });
+  await asAdmin(t).mutation(api.cms.addSiteOwner, {
+    projectSlug: "project-a",
+    email: "owner@example.com",
+  });
+
+  const owners = await asAdmin(t).query(api.cms.listSiteOwners, {
+    projectSlug: "project-a",
+  });
+
+  expect(owners).toEqual(["owner@example.com"]);
+});
+
+test("site owners see only assigned sites in the CMS project list", async () => {
+  const t = convexTest(schema, modules);
+  await t.mutation(api.cms.ensureSeedData);
+  await asAdmin(t).mutation(api.cms.addSiteOwner, {
+    projectSlug: "project-a",
+    email: "owner@example.com",
+  });
+
+  const ownerProjects = await asUser(t, "owner@example.com").query(api.cms.listProjects);
+  const unassignedProjects = await asUser(t, "unassigned@example.com").query(
+    api.cms.listProjects,
+  );
+
+  expect(ownerProjects.map((item) => item.slug)).toEqual(["project-a"]);
+  expect(unassignedProjects).toEqual([]);
+});
+
+test("current CMS access reports whether the signed-in user is admin", async () => {
+  const t = convexTest(schema, modules);
+
+  await expect(t.query(api.cms.getCmsAccess)).rejects.toThrow("Not authenticated");
+  await expect(asAdmin(t).query(api.cms.getCmsAccess)).resolves.toEqual({ isAdmin: true });
+  await expect(asUser(t, "owner@example.com").query(api.cms.getCmsAccess)).resolves.toEqual({
+    isAdmin: false,
+  });
+});
+
+test("site owners can edit assigned sites but not unassigned sites", async () => {
+  const t = convexTest(schema, modules);
+  await t.mutation(api.cms.ensureSeedData);
+  await asAdmin(t).mutation(api.cms.addSiteOwner, {
+    projectSlug: "project-a",
+    email: "owner@example.com",
+  });
+
+  const owner = asUser(t, "owner@example.com");
+  await owner.mutation(api.cms.saveDraft, {
+    projectSlug: "project-a",
+    pageSlug,
+    fields: { "hero.title": "Owner draft" },
+  });
+  await owner.mutation(api.cms.publishPage, {
+    projectSlug: "project-a",
+    pageSlug,
+  });
+
+  const publicFields = await t.query(api.cms.getPublishedContent, {
+    projectSlug: "project-a",
+    pageSlug,
+  });
+
+  await expect(
+    owner.mutation(api.cms.saveDraft, {
+      projectSlug: "project-b",
+      pageSlug,
+      fields: { "hero.title": "Cross-site draft" },
+    }),
+  ).rejects.toThrow("Unauthorized");
+  expect(publicFields["hero.title"]).toBe("Owner draft");
+});
+
+test("authenticated unassigned users cannot read protected previews", async () => {
+  const t = convexTest(schema, modules);
+  await t.mutation(api.cms.ensureSeedData);
+
+  await expect(
+    asUser(t, "unassigned@example.com").query(api.cms.getPreviewContent, {
+      projectSlug: "project-a",
+      pageSlug,
+    }),
+  ).rejects.toThrow("Unauthorized");
+});
+
 test("admin can create a project with editable home content shell", async () => {
   const t = convexTest(schema, modules);
 
-  const project = await t.mutation(api.cms.createProject, {
+  const project = await asAdmin(t).mutation(api.cms.createProject, {
     slug: "sable-cloud",
     name: "Sable Cloud",
     origin: "https://sable.example.com",
@@ -68,10 +203,10 @@ test("admin can create a project with editable home content shell", async () => 
   });
 
   expect(project?.slug).toBe("sable-cloud");
-  const projects = await t.query(api.cms.listProjects);
+  const projects = await asAdmin(t).query(api.cms.listProjects);
   expect(projects.map((item) => item.slug)).toEqual(["sable-cloud"]);
 
-  const pages = await t.query(api.cms.listPages, { projectSlug: "sable-cloud" });
+  const pages = await asAdmin(t).query(api.cms.listPages, { projectSlug: "sable-cloud" });
   expect(pages).toEqual([
     { slug: "home", title: "Home", path: "/", draftFieldIds: [], draftCount: 0 },
   ]);
@@ -79,14 +214,14 @@ test("admin can create a project with editable home content shell", async () => 
 
 test("admin can update project connection URLs without changing the slug", async () => {
   const t = convexTest(schema, modules);
-  await t.mutation(api.cms.createProject, {
+  await asAdmin(t).mutation(api.cms.createProject, {
     slug: "sable-cloud",
     name: "Sable Cloud",
     origin: "https://old.example.com",
     editUrl: "https://old.example.com",
   });
 
-  const updated = await t.mutation(api.cms.updateProject, {
+  const updated = await asAdmin(t).mutation(api.cms.updateProject, {
     slug: "sable-cloud",
     name: "Sable",
     origin: "https://sable.example.com",
@@ -106,12 +241,12 @@ test("public content reads resolve canonical Convex storage references", async (
   const storageId = await storeImage(t, "published image");
   const canonicalValue = `convex-storage:${storageId}`;
 
-  await t.mutation(api.cms.saveDraft, {
+  await asAdmin(t).mutation(api.cms.saveDraft, {
     projectSlug,
     pageSlug,
     fields: { "hero.image": canonicalValue },
   });
-  const publishedFromMutation = await t.mutation(api.cms.publishPage, {
+  const publishedFromMutation = await asAdmin(t).mutation(api.cms.publishPage, {
     projectSlug,
     pageSlug,
   });
@@ -139,13 +274,13 @@ test("preview content resolves the draft image after draft-over-published merge"
   const publishedCanonicalValue = `convex-storage:${publishedStorageId}`;
   const draftCanonicalValue = `convex-storage:${draftStorageId}`;
 
-  await t.mutation(api.cms.saveDraft, {
+  await asAdmin(t).mutation(api.cms.saveDraft, {
     projectSlug,
     pageSlug,
     fields: { "hero.image": publishedCanonicalValue },
   });
-  await t.mutation(api.cms.publishPage, { projectSlug, pageSlug });
-  await t.mutation(api.cms.saveDraft, {
+  await asAdmin(t).mutation(api.cms.publishPage, { projectSlug, pageSlug });
+  await asAdmin(t).mutation(api.cms.saveDraft, {
     projectSlug,
     pageSlug,
     fields: { "hero.image": draftCanonicalValue },
@@ -154,7 +289,7 @@ test("preview content resolves the draft image after draft-over-published merge"
   const draftUrl = await t.run(async (ctx) => {
     return await ctx.storage.getUrl(draftStorageId);
   });
-  const previewFields = await t.query(api.cms.getPreviewContent, {
+  const previewFields = await asAdmin(t).query(api.cms.getPreviewContent, {
     projectSlug,
     pageSlug,
   });
@@ -176,18 +311,18 @@ test("non-storage URL values pass through content reads unchanged", async () => 
     "image.external": "//cdn.example.com/hero.png",
   };
 
-  await t.mutation(api.cms.saveDraft, {
+  await asAdmin(t).mutation(api.cms.saveDraft, {
     projectSlug,
     pageSlug,
     fields: urlFields,
   });
-  await t.mutation(api.cms.publishPage, { projectSlug, pageSlug });
+  await asAdmin(t).mutation(api.cms.publishPage, { projectSlug, pageSlug });
 
   const publicFields = await t.query(api.cms.getPublishedContent, {
     projectSlug,
     pageSlug,
   });
-  const previewFields = await t.query(api.cms.getPreviewContent, {
+  const previewFields = await asAdmin(t).query(api.cms.getPreviewContent, {
     projectSlug,
     pageSlug,
   });
@@ -200,19 +335,19 @@ test("image discovery seeds only missing published values without replacing draf
   const t = convexTest(schema, modules);
   await t.mutation(api.cms.ensureSeedData);
 
-  const firstSeed = await t.mutation(api.cms.seedDiscoveredFields, {
+  const firstSeed = await asAdmin(t).mutation(api.cms.seedDiscoveredFields, {
     projectSlug,
     pageSlug,
     fields: [{ id: "hero.image", value: "/images/static-hero.jpg" }],
   });
 
-  await t.mutation(api.cms.saveDraft, {
+  await asAdmin(t).mutation(api.cms.saveDraft, {
     projectSlug,
     pageSlug,
     fields: { "hero.image": "/images/draft-hero.jpg" },
   });
 
-  const secondSeed = await t.mutation(api.cms.seedDiscoveredFields, {
+  const secondSeed = await asAdmin(t).mutation(api.cms.seedDiscoveredFields, {
     projectSlug,
     pageSlug,
     fields: [{ id: "hero.image", value: "/images/changed-static-hero.jpg" }],
@@ -231,18 +366,18 @@ test("image discovery returns resolved storage URLs for iframe rehydration", asy
 
   const draftStorageId = await storeImage(t, "draft image");
   const draftCanonicalValue = `convex-storage:${draftStorageId}`;
-  await t.mutation(api.cms.seedDiscoveredFields, {
+  await asAdmin(t).mutation(api.cms.seedDiscoveredFields, {
     projectSlug,
     pageSlug,
     fields: [{ id: "hero.image", value: "/images/static-hero.jpg" }],
   });
-  await t.mutation(api.cms.saveDraft, {
+  await asAdmin(t).mutation(api.cms.saveDraft, {
     projectSlug,
     pageSlug,
     fields: { "hero.image": draftCanonicalValue },
   });
 
-  const seeded = await t.mutation(api.cms.seedDiscoveredFields, {
+  const seeded = await asAdmin(t).mutation(api.cms.seedDiscoveredFields, {
     projectSlug,
     pageSlug,
     fields: [{ id: "hero.image", value: "/images/static-hero.jpg" }],
@@ -266,19 +401,19 @@ test("image upload flow saves a canonical draft while public output stays publis
   const publishedCanonicalValue = `convex-storage:${publishedStorageId}`;
   const draftCanonicalValue = `convex-storage:${draftStorageId}`;
 
-  await t.mutation(api.cms.saveDraft, {
+  await asAdmin(t).mutation(api.cms.saveDraft, {
     projectSlug,
     pageSlug,
     fields: { "hero.image": publishedCanonicalValue },
   });
-  await t.mutation(api.cms.publishPage, { projectSlug, pageSlug });
+  await asAdmin(t).mutation(api.cms.publishPage, { projectSlug, pageSlug });
 
-  const uploadUrl = await t.mutation(api.cms.generateImageUploadUrl, {
+  const uploadUrl = await asAdmin(t).mutation(api.cms.generateImageUploadUrl, {
     projectSlug,
     pageSlug,
     fieldId: "hero.image",
   });
-  await t.mutation(api.cms.saveDraft, {
+  await asAdmin(t).mutation(api.cms.saveDraft, {
     projectSlug,
     pageSlug,
     fields: { "hero.image": draftCanonicalValue },
@@ -289,7 +424,7 @@ test("image upload flow saves a canonical draft while public output stays publis
     projectSlug,
     pageSlug,
   });
-  const previewFields = await t.query(api.cms.getPreviewContent, {
+  const previewFields = await asAdmin(t).query(api.cms.getPreviewContent, {
     projectSlug,
     pageSlug,
   });
@@ -311,27 +446,27 @@ test("image draft uploads are isolated by project slug and page slug", async () 
   const t = convexTest(schema, modules);
   await t.mutation(api.cms.ensureSeedData);
 
-  await t.mutation(api.cms.seedDiscoveredFields, {
+  await asAdmin(t).mutation(api.cms.seedDiscoveredFields, {
     projectSlug: "project-a",
     pageSlug,
     fields: [{ id: "hero.image", value: "/project-a-published.jpg" }],
   });
-  await t.mutation(api.cms.seedDiscoveredFields, {
+  await asAdmin(t).mutation(api.cms.seedDiscoveredFields, {
     projectSlug: "project-b",
     pageSlug,
     fields: [{ id: "hero.image", value: "/project-b-published.jpg" }],
   });
-  await t.mutation(api.cms.saveDraft, {
+  await asAdmin(t).mutation(api.cms.saveDraft, {
     projectSlug: "project-a",
     pageSlug,
     fields: { "hero.image": "convex-storage:project-a-draft" },
   });
 
-  const projectA = await t.query(api.cms.getPreviewContent, {
+  const projectA = await asAdmin(t).query(api.cms.getPreviewContent, {
     projectSlug: "project-a",
     pageSlug,
   });
-  const projectB = await t.query(api.cms.getPreviewContent, {
+  const projectB = await asAdmin(t).query(api.cms.getPreviewContent, {
     projectSlug: "project-b",
     pageSlug,
   });
@@ -344,36 +479,36 @@ test("page draft fields are isolated by editor language", async () => {
   const t = convexTest(schema, modules);
   await t.mutation(api.cms.ensureSeedData);
 
-  await t.mutation(api.cms.seedDiscoveredFields, {
+  await asAdmin(t).mutation(api.cms.seedDiscoveredFields, {
     projectSlug,
     pageSlug,
     language: "fr",
     fields: [{ id: "button.cta", value: "Contactez-nous" }],
   });
-  await t.mutation(api.cms.saveDraft, {
+  await asAdmin(t).mutation(api.cms.saveDraft, {
     projectSlug,
     pageSlug,
     language: "fr",
     fields: { "button.cta": "Parlez-nous" },
   });
-  await t.mutation(api.cms.saveDraft, {
+  await asAdmin(t).mutation(api.cms.saveDraft, {
     projectSlug,
     pageSlug,
     language: "en",
     fields: { "button.cta": "Contact us" },
   });
 
-  const frenchPreview = await t.query(api.cms.getPreviewContent, {
+  const frenchPreview = await asAdmin(t).query(api.cms.getPreviewContent, {
     projectSlug,
     pageSlug,
     language: "fr",
   });
-  const englishPreview = await t.query(api.cms.getPreviewContent, {
+  const englishPreview = await asAdmin(t).query(api.cms.getPreviewContent, {
     projectSlug,
     pageSlug,
     language: "en",
   });
-  const frenchPage = await t.query(api.cms.getPage, {
+  const frenchPage = await asAdmin(t).query(api.cms.getPage, {
     projectSlug,
     pageSlug,
     language: "fr",
@@ -389,18 +524,18 @@ test("published page fields read the requested language with legacy fallback", a
   const t = convexTest(schema, modules);
   await t.mutation(api.cms.ensureSeedData);
 
-  await t.mutation(api.cms.seedDiscoveredFields, {
+  await asAdmin(t).mutation(api.cms.seedDiscoveredFields, {
     projectSlug,
     pageSlug,
     fields: [{ id: "button.cta", value: "Contactez-nous" }],
   });
-  await t.mutation(api.cms.saveDraft, {
+  await asAdmin(t).mutation(api.cms.saveDraft, {
     projectSlug,
     pageSlug,
     language: "en",
     fields: { "button.cta": "Contact us" },
   });
-  await t.mutation(api.cms.publishPage, {
+  await asAdmin(t).mutation(api.cms.publishPage, {
     projectSlug,
     pageSlug,
     language: "en",
@@ -430,25 +565,25 @@ test("site-wide publish promotes only the selected language page drafts", async 
   const t = convexTest(schema, modules);
   await t.mutation(api.cms.ensureSeedData);
 
-  await t.mutation(api.cms.seedDiscoveredFields, {
+  await asAdmin(t).mutation(api.cms.seedDiscoveredFields, {
     projectSlug,
     pageSlug,
     fields: [{ id: "button.cta", value: "Contactez-nous" }],
   });
-  await t.mutation(api.cms.saveDraft, {
+  await asAdmin(t).mutation(api.cms.saveDraft, {
     projectSlug,
     pageSlug,
     language: "fr",
     fields: { "button.cta": "Parlez-nous" },
   });
-  await t.mutation(api.cms.saveDraft, {
+  await asAdmin(t).mutation(api.cms.saveDraft, {
     projectSlug,
     pageSlug,
     language: "en",
     fields: { "button.cta": "Contact us" },
   });
 
-  await t.mutation(api.cms.publishSite, {
+  await asAdmin(t).mutation(api.cms.publishSite, {
     projectSlug,
     language: "en",
   });
@@ -458,17 +593,17 @@ test("site-wide publish promotes only the selected language page drafts", async 
     pageSlug,
     language: "en",
   });
-  const frenchPreview = await t.query(api.cms.getPreviewContent, {
+  const frenchPreview = await asAdmin(t).query(api.cms.getPreviewContent, {
     projectSlug,
     pageSlug,
     language: "fr",
   });
-  const englishDraftState = await t.query(api.cms.getSiteDraftState, {
+  const englishDraftState = await asAdmin(t).query(api.cms.getSiteDraftState, {
     projectSlug,
     pageSlug,
     language: "en",
   });
-  const frenchDraftState = await t.query(api.cms.getSiteDraftState, {
+  const frenchDraftState = await asAdmin(t).query(api.cms.getSiteDraftState, {
     projectSlug,
     pageSlug,
     language: "fr",
@@ -484,30 +619,30 @@ test("site-wide discard clears only the selected language page drafts", async ()
   const t = convexTest(schema, modules);
   await t.mutation(api.cms.ensureSeedData);
 
-  await t.mutation(api.cms.saveDraft, {
+  await asAdmin(t).mutation(api.cms.saveDraft, {
     projectSlug,
     pageSlug,
     language: "fr",
     fields: { "button.cta": "Parlez-nous" },
   });
-  await t.mutation(api.cms.saveDraft, {
+  await asAdmin(t).mutation(api.cms.saveDraft, {
     projectSlug,
     pageSlug,
     language: "en",
     fields: { "button.cta": "Contact us" },
   });
 
-  await t.mutation(api.cms.discardSiteDrafts, {
+  await asAdmin(t).mutation(api.cms.discardSiteDrafts, {
     projectSlug,
     language: "en",
   });
 
-  const englishPreview = await t.query(api.cms.getPreviewContent, {
+  const englishPreview = await asAdmin(t).query(api.cms.getPreviewContent, {
     projectSlug,
     pageSlug,
     language: "en",
   });
-  const frenchPreview = await t.query(api.cms.getPreviewContent, {
+  const frenchPreview = await asAdmin(t).query(api.cms.getPreviewContent, {
     projectSlug,
     pageSlug,
     language: "fr",
@@ -520,7 +655,7 @@ test("site-wide discard clears only the selected language page drafts", async ()
 test("website-declared pages sync, isolate drafts, and publish or discard project-wide", async () => {
   const t = convexTest(schema, modules);
   await t.mutation(api.cms.ensureSeedData);
-  await t.mutation(api.cms.syncPages, {
+  await asAdmin(t).mutation(api.cms.syncPages, {
     projectSlug,
     pages: [
       { slug: "home", title: "Home", path: "/" },
@@ -528,41 +663,41 @@ test("website-declared pages sync, isolate drafts, and publish or discard projec
     ],
   });
 
-  const pages = await t.query(api.cms.listPages, { projectSlug });
+  const pages = await asAdmin(t).query(api.cms.listPages, { projectSlug });
   expect(pages).toEqual([
     { slug: "home", title: "Home", path: "/", draftFieldIds: [], draftCount: 0 },
     { slug: "pricing", title: "Pricing", path: "/pricing", draftFieldIds: [], draftCount: 0 },
   ]);
 
-  await t.mutation(api.cms.seedDiscoveredFields, {
+  await asAdmin(t).mutation(api.cms.seedDiscoveredFields, {
     projectSlug,
     pageSlug: "home",
     fields: [{ id: "hero.title", value: "Published home title" }],
   });
-  await t.mutation(api.cms.seedDiscoveredFields, {
+  await asAdmin(t).mutation(api.cms.seedDiscoveredFields, {
     projectSlug,
     pageSlug: "pricing",
     fields: [{ id: "pricing.hero.title", value: "Published pricing title" }],
   });
-  await t.mutation(api.cms.saveDraft, {
+  await asAdmin(t).mutation(api.cms.saveDraft, {
     projectSlug,
     pageSlug: "pricing",
     fields: { "pricing.hero.title": "Draft pricing title" },
   });
 
-  const homePreview = await t.query(api.cms.getPreviewContent, {
+  const homePreview = await asAdmin(t).query(api.cms.getPreviewContent, {
     projectSlug,
     pageSlug: "home",
   });
-  const pricingPreview = await t.query(api.cms.getPreviewContent, {
+  const pricingPreview = await asAdmin(t).query(api.cms.getPreviewContent, {
     projectSlug,
     pageSlug: "pricing",
   });
-  const draftState = await t.query(api.cms.getSiteDraftState, {
+  const draftState = await asAdmin(t).query(api.cms.getSiteDraftState, {
     projectSlug,
     pageSlug: "pricing",
   });
-  const pagesWithDraft = await t.query(api.cms.listPages, { projectSlug });
+  const pagesWithDraft = await asAdmin(t).query(api.cms.listPages, { projectSlug });
 
   expect(homePreview["hero.title"]).toBe("Published home title");
   expect(pricingPreview["pricing.hero.title"]).toBe("Draft pricing title");
@@ -582,13 +717,13 @@ test("website-declared pages sync, isolate drafts, and publish or discard projec
     },
   ]);
 
-  await t.mutation(api.cms.publishSite, { projectSlug });
+  await asAdmin(t).mutation(api.cms.publishSite, { projectSlug });
   const publishedPricing = await t.query(api.cms.getPublishedContent, {
     projectSlug,
     pageSlug: "pricing",
   });
   const pricingContentAfterPublish = await getStoredPageContent(t, "pricing");
-  const draftStateAfterPublish = await t.query(api.cms.getSiteDraftState, {
+  const draftStateAfterPublish = await asAdmin(t).query(api.cms.getSiteDraftState, {
     projectSlug,
     pageSlug: "pricing",
   });
@@ -597,27 +732,27 @@ test("website-declared pages sync, isolate drafts, and publish or discard projec
   expect(pricingContentAfterPublish.draftFields).toEqual({});
   expect(draftStateAfterPublish.totalDraftCount).toBe(0);
 
-  await t.mutation(api.cms.saveDraft, {
+  await asAdmin(t).mutation(api.cms.saveDraft, {
     projectSlug,
     pageSlug: "home",
     fields: { "hero.title": "Discarded home title" },
   });
-  await t.mutation(api.cms.saveDraft, {
+  await asAdmin(t).mutation(api.cms.saveDraft, {
     projectSlug,
     pageSlug: "pricing",
     fields: { "pricing.hero.title": "Discarded pricing title" },
   });
-  await t.mutation(api.cms.discardSiteDrafts, { projectSlug });
+  await asAdmin(t).mutation(api.cms.discardSiteDrafts, { projectSlug });
 
-  const homeAfterDiscard = await t.query(api.cms.getPreviewContent, {
+  const homeAfterDiscard = await asAdmin(t).query(api.cms.getPreviewContent, {
     projectSlug,
     pageSlug: "home",
   });
-  const pricingAfterDiscard = await t.query(api.cms.getPreviewContent, {
+  const pricingAfterDiscard = await asAdmin(t).query(api.cms.getPreviewContent, {
     projectSlug,
     pageSlug: "pricing",
   });
-  const finalDraftState = await t.query(api.cms.getSiteDraftState, {
+  const finalDraftState = await asAdmin(t).query(api.cms.getSiteDraftState, {
     projectSlug,
     pageSlug: "home",
   });
@@ -636,25 +771,25 @@ test("publishing an image draft promotes it to published content and clears draf
   const originalCanonicalValue = `convex-storage:${originalStorageId}`;
   const draftCanonicalValue = `convex-storage:${draftStorageId}`;
 
-  await t.mutation(api.cms.saveDraft, {
+  await asAdmin(t).mutation(api.cms.saveDraft, {
     projectSlug,
     pageSlug,
     fields: { "hero.image": originalCanonicalValue },
   });
-  await t.mutation(api.cms.publishPage, { projectSlug, pageSlug });
-  await t.mutation(api.cms.saveDraft, {
+  await asAdmin(t).mutation(api.cms.publishPage, { projectSlug, pageSlug });
+  await asAdmin(t).mutation(api.cms.saveDraft, {
     projectSlug,
     pageSlug,
     fields: { "hero.image": draftCanonicalValue },
   });
 
-  const pageWithDraft = await t.query(api.cms.getPage, { projectSlug, pageSlug });
-  const publishedFields = await t.mutation(api.cms.publishPage, {
+  const pageWithDraft = await asAdmin(t).query(api.cms.getPage, { projectSlug, pageSlug });
+  const publishedFields = await asAdmin(t).mutation(api.cms.publishPage, {
     projectSlug,
     pageSlug,
   });
   const storedContent = await getStoredPageContent(t);
-  const pageAfterPublish = await t.query(api.cms.getPage, { projectSlug, pageSlug });
+  const pageAfterPublish = await asAdmin(t).query(api.cms.getPage, { projectSlug, pageSlug });
   const publicFields = await t.query(api.cms.getPublishedContent, {
     projectSlug,
     pageSlug,
@@ -680,25 +815,25 @@ test("discarding an image draft restores preview to the published image", async 
   const publishedCanonicalValue = `convex-storage:${publishedStorageId}`;
   const draftCanonicalValue = `convex-storage:${draftStorageId}`;
 
-  await t.mutation(api.cms.saveDraft, {
+  await asAdmin(t).mutation(api.cms.saveDraft, {
     projectSlug,
     pageSlug,
     fields: { "hero.image": publishedCanonicalValue },
   });
-  await t.mutation(api.cms.publishPage, { projectSlug, pageSlug });
-  await t.mutation(api.cms.saveDraft, {
+  await asAdmin(t).mutation(api.cms.publishPage, { projectSlug, pageSlug });
+  await asAdmin(t).mutation(api.cms.saveDraft, {
     projectSlug,
     pageSlug,
     fields: { "hero.image": draftCanonicalValue },
   });
 
-  const draftPreview = await t.query(api.cms.getPreviewContent, {
+  const draftPreview = await asAdmin(t).query(api.cms.getPreviewContent, {
     projectSlug,
     pageSlug,
   });
-  await t.mutation(api.cms.discardDrafts, { projectSlug, pageSlug });
+  await asAdmin(t).mutation(api.cms.discardDrafts, { projectSlug, pageSlug });
   const storedContent = await getStoredPageContent(t);
-  const previewAfterDiscard = await t.query(api.cms.getPreviewContent, {
+  const previewAfterDiscard = await asAdmin(t).query(api.cms.getPreviewContent, {
     projectSlug,
     pageSlug,
   });
@@ -727,7 +862,7 @@ test("text and image drafts publish together and clear the unpublished page stat
   const storageId = await storeImage(t, "mixed publish image");
   const canonicalValue = `convex-storage:${storageId}`;
 
-  await t.mutation(api.cms.seedDiscoveredFields, {
+  await asAdmin(t).mutation(api.cms.seedDiscoveredFields, {
     projectSlug,
     pageSlug,
     fields: [
@@ -735,7 +870,7 @@ test("text and image drafts publish together and clear the unpublished page stat
       { id: "hero.image", value: "/original-hero.jpg" },
     ],
   });
-  await t.mutation(api.cms.saveDraft, {
+  await asAdmin(t).mutation(api.cms.saveDraft, {
     projectSlug,
     pageSlug,
     fields: {
@@ -744,13 +879,13 @@ test("text and image drafts publish together and clear the unpublished page stat
     },
   });
 
-  await t.mutation(api.cms.publishPage, { projectSlug, pageSlug });
+  await asAdmin(t).mutation(api.cms.publishPage, { projectSlug, pageSlug });
   const storedContent = await getStoredPageContent(t);
   const publicFields = await t.query(api.cms.getPublishedContent, {
     projectSlug,
     pageSlug,
   });
-  const pageAfterPublish = await t.query(api.cms.getPage, {
+  const pageAfterPublish = await asAdmin(t).query(api.cms.getPage, {
     projectSlug,
     pageSlug,
   });
@@ -770,7 +905,7 @@ test("published collection records are listed by project and collection only", a
   const t = convexTest(schema, modules);
   await t.mutation(api.cms.ensureSeedData);
 
-  await t.mutation(api.cms.seedPublishedCollectionItems, {
+  await asAdmin(t).mutation(api.cms.seedPublishedCollectionItems, {
     projectSlug: "project-a",
     collectionKey: "projects",
     items: [
@@ -791,7 +926,7 @@ test("published collection records are listed by project and collection only", a
       },
     ],
   });
-  await t.mutation(api.cms.seedPublishedCollectionItems, {
+  await asAdmin(t).mutation(api.cms.seedPublishedCollectionItems, {
     projectSlug: "project-b",
     collectionKey: "projects",
     items: [
@@ -866,7 +1001,7 @@ test("published collection records are listed by project and collection only", a
 test("collection item drafts save by nested path and preview over published data", async () => {
   const t = convexTest(schema, modules);
   await t.mutation(api.cms.ensureSeedData);
-  await t.mutation(api.cms.seedPublishedCollectionItems, {
+  await asAdmin(t).mutation(api.cms.seedPublishedCollectionItems, {
     projectSlug: "project-a",
     collectionKey: "projects",
     items: [
@@ -884,7 +1019,7 @@ test("collection item drafts save by nested path and preview over published data
       },
     ],
   });
-  await t.mutation(api.cms.seedPublishedCollectionItems, {
+  await asAdmin(t).mutation(api.cms.seedPublishedCollectionItems, {
     projectSlug: "project-b",
     collectionKey: "projects",
     items: [
@@ -895,7 +1030,7 @@ test("collection item drafts save by nested path and preview over published data
     ],
   });
 
-  await t.mutation(api.cms.saveCollectionItemDraft, {
+  await asAdmin(t).mutation(api.cms.saveCollectionItemDraft, {
     projectSlug: "project-a",
     collectionKey: "projects",
     slug: "brand-refresh",
@@ -903,7 +1038,7 @@ test("collection item drafts save by nested path and preview over published data
     value: "Draft brand refresh",
   });
 
-  const previewRecords = await t.query(api.cms.listPreviewCollectionItems, {
+  const previewRecords = await asAdmin(t).query(api.cms.listPreviewCollectionItems, {
     projectSlug: "project-a",
     collectionKey: "projects",
   });
@@ -911,7 +1046,7 @@ test("collection item drafts save by nested path and preview over published data
     projectSlug: "project-a",
     collectionKey: "projects",
   });
-  const projectBPreview = await t.query(api.cms.listPreviewCollectionItems, {
+  const projectBPreview = await asAdmin(t).query(api.cms.listPreviewCollectionItems, {
     projectSlug: "project-b",
     collectionKey: "projects",
   });
@@ -955,7 +1090,7 @@ test("collection item drafts save by nested path and preview over published data
 test("collection item drafts publish by selected language without overwriting global records", async () => {
   const t = convexTest(schema, modules);
   await t.mutation(api.cms.ensureSeedData);
-  await t.mutation(api.cms.seedPublishedCollectionItems, {
+  await asAdmin(t).mutation(api.cms.seedPublishedCollectionItems, {
     projectSlug,
     collectionKey: "services",
     items: [
@@ -969,7 +1104,7 @@ test("collection item drafts publish by selected language without overwriting gl
     ],
   });
 
-  await t.mutation(api.cms.saveCollectionItemDraft, {
+  await asAdmin(t).mutation(api.cms.saveCollectionItemDraft, {
     projectSlug,
     collectionKey: "services",
     slug: "compagnonnage",
@@ -977,7 +1112,7 @@ test("collection item drafts publish by selected language without overwriting gl
     path: "title",
     value: "Compagnonnage et presence a domicile",
   });
-  await t.mutation(api.cms.saveCollectionItemDraft, {
+  await asAdmin(t).mutation(api.cms.saveCollectionItemDraft, {
     projectSlug,
     collectionKey: "services",
     slug: "compagnonnage",
@@ -986,7 +1121,7 @@ test("collection item drafts publish by selected language without overwriting gl
     value: "Conversation, lecture, marche, jeux de societe.",
   });
 
-  const frenchPreview = await t.query(api.cms.listPreviewCollectionItems, {
+  const frenchPreview = await asAdmin(t).query(api.cms.listPreviewCollectionItems, {
     projectSlug,
     collectionKey: "services",
     language: "fr",
@@ -997,7 +1132,7 @@ test("collection item drafts publish by selected language without overwriting gl
     language: "en",
   });
 
-  await t.mutation(api.cms.publishSite, { projectSlug, language: "fr" });
+  await asAdmin(t).mutation(api.cms.publishSite, { projectSlug, language: "fr" });
 
   const frenchPublished = await t.query(api.cms.listPublishedCollectionItems, {
     projectSlug,
@@ -1035,7 +1170,7 @@ test("collection item drafts publish by selected language without overwriting gl
 test("object and list collection drafts preview, publish, and discard through site lifecycle", async () => {
   const t = convexTest(schema, modules);
   await t.mutation(api.cms.ensureSeedData);
-  await t.mutation(api.cms.seedPublishedCollectionItems, {
+  await asAdmin(t).mutation(api.cms.seedPublishedCollectionItems, {
     projectSlug,
     collectionKey: "projects",
     items: [
@@ -1049,14 +1184,14 @@ test("object and list collection drafts preview, publish, and discard through si
     ],
   });
 
-  await t.mutation(api.cms.saveCollectionItemDraft, {
+  await asAdmin(t).mutation(api.cms.saveCollectionItemDraft, {
     projectSlug,
     collectionKey: "projects",
     slug: "brand-refresh",
     path: "seo.title",
     value: "Draft SEO title",
   });
-  await t.mutation(api.cms.saveCollectionItemDraft, {
+  await asAdmin(t).mutation(api.cms.saveCollectionItemDraft, {
     projectSlug,
     collectionKey: "projects",
     slug: "brand-refresh",
@@ -1067,7 +1202,7 @@ test("object and list collection drafts preview, publish, and discard through si
     ],
   });
 
-  const previewBeforePublish = await t.query(api.cms.listPreviewCollectionItems, {
+  const previewBeforePublish = await asAdmin(t).query(api.cms.listPreviewCollectionItems, {
     projectSlug,
     collectionKey: "projects",
   });
@@ -1076,21 +1211,21 @@ test("object and list collection drafts preview, publish, and discard through si
     collectionKey: "projects",
   });
 
-  await t.mutation(api.cms.publishSite, { projectSlug, pageSlug });
+  await asAdmin(t).mutation(api.cms.publishSite, { projectSlug, pageSlug });
   const publicAfterPublish = await t.query(api.cms.listPublishedCollectionItems, {
     projectSlug,
     collectionKey: "projects",
   });
 
-  await t.mutation(api.cms.saveCollectionItemDraft, {
+  await asAdmin(t).mutation(api.cms.saveCollectionItemDraft, {
     projectSlug,
     collectionKey: "projects",
     slug: "brand-refresh",
     path: "benefits",
     value: [{ id: "discarded", title: "Discarded benefit" }],
   });
-  await t.mutation(api.cms.discardSiteDrafts, { projectSlug, pageSlug });
-  const previewAfterDiscard = await t.query(api.cms.listPreviewCollectionItems, {
+  await asAdmin(t).mutation(api.cms.discardSiteDrafts, { projectSlug, pageSlug });
+  const previewAfterDiscard = await asAdmin(t).query(api.cms.listPreviewCollectionItems, {
     projectSlug,
     collectionKey: "projects",
   });
@@ -1123,12 +1258,12 @@ test("object and list collection drafts preview, publish, and discard through si
 test("site-wide publish promotes page and collection drafts together", async () => {
   const t = convexTest(schema, modules);
   await t.mutation(api.cms.ensureSeedData);
-  await t.mutation(api.cms.seedDiscoveredFields, {
+  await asAdmin(t).mutation(api.cms.seedDiscoveredFields, {
     projectSlug,
     pageSlug,
     fields: [{ id: "hero.title", value: "Published page title" }],
   });
-  await t.mutation(api.cms.seedPublishedCollectionItems, {
+  await asAdmin(t).mutation(api.cms.seedPublishedCollectionItems, {
     projectSlug,
     collectionKey: "projects",
     items: [
@@ -1139,12 +1274,12 @@ test("site-wide publish promotes page and collection drafts together", async () 
     ],
   });
 
-  await t.mutation(api.cms.saveDraft, {
+  await asAdmin(t).mutation(api.cms.saveDraft, {
     projectSlug,
     pageSlug,
     fields: { "hero.title": "Draft page title" },
   });
-  await t.mutation(api.cms.saveCollectionItemDraft, {
+  await asAdmin(t).mutation(api.cms.saveCollectionItemDraft, {
     projectSlug,
     collectionKey: "projects",
     slug: "brand-refresh",
@@ -1152,12 +1287,12 @@ test("site-wide publish promotes page and collection drafts together", async () 
     value: "Draft record title",
   });
 
-  const draftState = await t.query(api.cms.getSiteDraftState, {
+  const draftState = await asAdmin(t).query(api.cms.getSiteDraftState, {
     projectSlug,
     pageSlug,
   });
-  await t.mutation(api.cms.publishSite, { projectSlug, pageSlug });
-  const pageAfterPublish = await t.query(api.cms.getPage, { projectSlug, pageSlug });
+  await asAdmin(t).mutation(api.cms.publishSite, { projectSlug, pageSlug });
+  const pageAfterPublish = await asAdmin(t).query(api.cms.getPage, { projectSlug, pageSlug });
   const publicFields = await t.query(api.cms.getPublishedContent, {
     projectSlug,
     pageSlug,
@@ -1166,7 +1301,7 @@ test("site-wide publish promotes page and collection drafts together", async () 
     projectSlug,
     collectionKey: "projects",
   });
-  const draftStateAfterPublish = await t.query(api.cms.getSiteDraftState, {
+  const draftStateAfterPublish = await asAdmin(t).query(api.cms.getSiteDraftState, {
     projectSlug,
     pageSlug,
   });
@@ -1192,12 +1327,12 @@ test("site-wide publish promotes page and collection drafts together", async () 
 test("site-wide discard clears page and collection drafts without changing published data", async () => {
   const t = convexTest(schema, modules);
   await t.mutation(api.cms.ensureSeedData);
-  await t.mutation(api.cms.seedDiscoveredFields, {
+  await asAdmin(t).mutation(api.cms.seedDiscoveredFields, {
     projectSlug,
     pageSlug,
     fields: [{ id: "hero.title", value: "Published page title" }],
   });
-  await t.mutation(api.cms.seedPublishedCollectionItems, {
+  await asAdmin(t).mutation(api.cms.seedPublishedCollectionItems, {
     projectSlug,
     collectionKey: "projects",
     items: [
@@ -1208,12 +1343,12 @@ test("site-wide discard clears page and collection drafts without changing publi
     ],
   });
 
-  await t.mutation(api.cms.saveDraft, {
+  await asAdmin(t).mutation(api.cms.saveDraft, {
     projectSlug,
     pageSlug,
     fields: { "hero.title": "Discarded page title" },
   });
-  await t.mutation(api.cms.saveCollectionItemDraft, {
+  await asAdmin(t).mutation(api.cms.saveCollectionItemDraft, {
     projectSlug,
     collectionKey: "projects",
     slug: "brand-refresh",
@@ -1221,17 +1356,17 @@ test("site-wide discard clears page and collection drafts without changing publi
     value: "Discarded record title",
   });
 
-  await t.mutation(api.cms.discardSiteDrafts, { projectSlug, pageSlug });
-  const pageAfterDiscard = await t.query(api.cms.getPage, { projectSlug, pageSlug });
+  await asAdmin(t).mutation(api.cms.discardSiteDrafts, { projectSlug, pageSlug });
+  const pageAfterDiscard = await asAdmin(t).query(api.cms.getPage, { projectSlug, pageSlug });
   const publicFields = await t.query(api.cms.getPublishedContent, {
     projectSlug,
     pageSlug,
   });
-  const previewRecords = await t.query(api.cms.listPreviewCollectionItems, {
+  const previewRecords = await asAdmin(t).query(api.cms.listPreviewCollectionItems, {
     projectSlug,
     collectionKey: "projects",
   });
-  const draftState = await t.query(api.cms.getSiteDraftState, {
+  const draftState = await asAdmin(t).query(api.cms.getSiteDraftState, {
     projectSlug,
     pageSlug,
   });
@@ -1251,14 +1386,14 @@ test("draft-only collection records preview, publish, and discard through site l
   const t = convexTest(schema, modules);
   await t.mutation(api.cms.ensureSeedData);
 
-  await t.mutation(api.cms.createCollectionItemDraft, {
+  await asAdmin(t).mutation(api.cms.createCollectionItemDraft, {
     projectSlug,
     collectionKey: "projects",
     slug: "new-project",
     data: { card: { title: "New project" } },
   });
 
-  const previewBeforePublish = await t.query(api.cms.listPreviewCollectionItems, {
+  const previewBeforePublish = await asAdmin(t).query(api.cms.listPreviewCollectionItems, {
     projectSlug,
     collectionKey: "projects",
   });
@@ -1266,26 +1401,26 @@ test("draft-only collection records preview, publish, and discard through site l
     projectSlug,
     collectionKey: "projects",
   });
-  const draftState = await t.query(api.cms.getSiteDraftState, { projectSlug, pageSlug });
+  const draftState = await asAdmin(t).query(api.cms.getSiteDraftState, { projectSlug, pageSlug });
 
-  await t.mutation(api.cms.publishSite, { projectSlug, pageSlug });
+  await asAdmin(t).mutation(api.cms.publishSite, { projectSlug, pageSlug });
   const publicAfterPublish = await t.query(api.cms.listPublishedCollectionItems, {
     projectSlug,
     collectionKey: "projects",
   });
-  const draftStateAfterPublish = await t.query(api.cms.getSiteDraftState, {
+  const draftStateAfterPublish = await asAdmin(t).query(api.cms.getSiteDraftState, {
     projectSlug,
     pageSlug,
   });
 
-  await t.mutation(api.cms.createCollectionItemDraft, {
+  await asAdmin(t).mutation(api.cms.createCollectionItemDraft, {
     projectSlug,
     collectionKey: "projects",
     slug: "discarded-project",
     data: { card: { title: "Discard me" } },
   });
-  await t.mutation(api.cms.discardSiteDrafts, { projectSlug, pageSlug });
-  const previewAfterDiscard = await t.query(api.cms.listPreviewCollectionItems, {
+  await asAdmin(t).mutation(api.cms.discardSiteDrafts, { projectSlug, pageSlug });
+  const previewAfterDiscard = await asAdmin(t).query(api.cms.listPreviewCollectionItems, {
     projectSlug,
     collectionKey: "projects",
   });
@@ -1316,7 +1451,7 @@ test("collection media references resolve in preview and publish through site li
   const publishedCanonicalValue = `convex-storage:${publishedStorageId}`;
   const draftCanonicalValue = `convex-storage:${draftStorageId}`;
 
-  await t.mutation(api.cms.seedPublishedCollectionItems, {
+  await asAdmin(t).mutation(api.cms.seedPublishedCollectionItems, {
     projectSlug,
     collectionKey: "projects",
     items: [
@@ -1327,13 +1462,13 @@ test("collection media references resolve in preview and publish through site li
     ],
   });
 
-  const uploadUrl = await t.mutation(api.cms.generateCollectionFileUploadUrl, {
+  const uploadUrl = await asAdmin(t).mutation(api.cms.generateCollectionFileUploadUrl, {
     projectSlug,
     collectionKey: "projects",
     slug: "brand-refresh",
     path: "media.cover",
   });
-  await t.mutation(api.cms.saveCollectionItemDraft, {
+  await asAdmin(t).mutation(api.cms.saveCollectionItemDraft, {
     projectSlug,
     collectionKey: "projects",
     slug: "brand-refresh",
@@ -1345,11 +1480,11 @@ test("collection media references resolve in preview and publish through site li
     projectSlug,
     collectionKey: "projects",
   });
-  const previewBeforePublish = await t.query(api.cms.listPreviewCollectionItems, {
+  const previewBeforePublish = await asAdmin(t).query(api.cms.listPreviewCollectionItems, {
     projectSlug,
     collectionKey: "projects",
   });
-  await t.mutation(api.cms.publishSite, { projectSlug, pageSlug });
+  await asAdmin(t).mutation(api.cms.publishSite, { projectSlug, pageSlug });
   const publicAfterPublish = await t.query(api.cms.listPublishedCollectionItems, {
     projectSlug,
     collectionKey: "projects",

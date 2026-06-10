@@ -311,6 +311,113 @@ html[data-mode="view"] .frame {
   font-size: 14px;
 }
 
+.ownerManager {
+  display: grid;
+  gap: var(--s-4);
+  padding-top: var(--s-4);
+  border-top: 1px solid var(--line);
+}
+.ownerAdd {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: var(--s-3);
+}
+.ownerList {
+  display: grid;
+  gap: var(--s-2);
+}
+.ownerRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--s-3);
+  padding: var(--s-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+}
+.ownerRow span {
+  overflow-wrap: anywhere;
+  color: var(--text);
+  font-size: 14px;
+}
+
+/* ============================================================
+   Site access dashboard
+   ============================================================ */
+.accessShell {
+  min-height: 100vh;
+  padding: var(--s-6);
+  background: var(--bg);
+}
+.accessShell.centered {
+  display: grid;
+  place-items: center;
+}
+.accessHeader,
+.siteGrid,
+.accessPanel {
+  width: min(100%, 920px);
+  margin: 0 auto;
+}
+.accessHeader {
+  margin-bottom: var(--s-5);
+}
+.accessHeader h1,
+.accessPanel h1 {
+  margin: 0;
+  color: var(--text);
+  font-size: 34px;
+  line-height: 1.05;
+  letter-spacing: 0;
+}
+.siteGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: var(--s-3);
+}
+.siteTile {
+  display: grid;
+  gap: var(--s-2);
+  min-height: 112px;
+  padding: var(--s-4);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow-lg);
+  color: var(--text);
+}
+.siteTile:hover {
+  border-color: var(--line-strong);
+  background: var(--surface-2);
+}
+.siteTile strong {
+  align-self: end;
+  font-size: 18px;
+  line-height: 1.2;
+}
+.siteTile span {
+  color: var(--text-muted);
+  font-family: var(--font-meta);
+  font-size: 11px;
+}
+.accessPanel {
+  display: grid;
+  gap: var(--s-3);
+  max-width: 520px;
+  padding: var(--s-5);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow-lg);
+}
+.accessPanel p {
+  margin: 0;
+  color: var(--text-muted);
+  line-height: 1.55;
+}
+
 /* ============================================================
    Mode + theme dock (top-right) — the one persistent control
    ============================================================ */

@@ -1,4 +1,5 @@
 import { v } from "convex/values";
+import { getAuthUserId } from "@convex-dev/auth/server";
 import { mutation, query } from "./_generated/server";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
@@ -126,6 +127,19 @@ async function getContentForPage(
     .unique();
 }
 
+async function getSiteMember(
+  ctx: QueryCtx | MutationCtx,
+  projectId: Id<"projects">,
+  email: string,
+): Promise<Doc<"siteMembers"> | null> {
+  return await ctx.db
+    .query("siteMembers")
+    .withIndex("by_projectId_and_email", (q) =>
+      q.eq("projectId", projectId).eq("email", email),
+    )
+    .unique();
+}
+
 async function listPagesForProject(
   ctx: QueryCtx | MutationCtx,
   projectId: Id<"projects">,
@@ -195,6 +209,62 @@ function valuesEqual(a: unknown, b: unknown) {
 
 function languageOrDefault(language: string | undefined) {
   return language ?? DEFAULT_LANGUAGE;
+}
+
+function normalizeEmail(value: string | null | undefined) {
+  return value?.trim().toLowerCase() ?? "";
+}
+
+function requireNormalizedEmail(value: string) {
+  const email = normalizeEmail(value);
+  if (!email) throw new Error("Email is required.");
+  return email;
+}
+
+async function requireIdentity(ctx: QueryCtx | MutationCtx) {
+  const identity = await ctx.auth.getUserIdentity();
+  if (!identity) throw new Error("Not authenticated");
+  return identity;
+}
+
+async function getAuthenticatedEmail(ctx: QueryCtx | MutationCtx) {
+  const identity = await requireIdentity(ctx);
+  const identityEmail = normalizeEmail(identity.email);
+  if (identityEmail) return identityEmail;
+
+  const userId = await getAuthUserId(ctx);
+  if (!userId) return "";
+
+  const user = await ctx.db.get(userId);
+  return normalizeEmail(user?.email);
+}
+
+async function isAdmin(ctx: QueryCtx | MutationCtx) {
+  const adminEmail = normalizeEmail(process.env.CMS_ADMIN_EMAIL);
+  if (!adminEmail) return false;
+
+  return (await getAuthenticatedEmail(ctx)) === adminEmail;
+}
+
+async function requireAdmin(ctx: QueryCtx | MutationCtx) {
+  await requireIdentity(ctx);
+  if (!(await isAdmin(ctx))) throw new Error("Unauthorized");
+}
+
+async function requireSiteAccess(
+  ctx: QueryCtx | MutationCtx,
+  project: Doc<"projects"> | null,
+) {
+  if (!project) throw new Error("Project not found.");
+  if (await isAdmin(ctx)) return project;
+
+  const email = await getAuthenticatedEmail(ctx);
+  if (!email) throw new Error("Unauthorized");
+
+  const member = await getSiteMember(ctx, project._id, email);
+  if (!member) throw new Error("Unauthorized");
+
+  return project;
 }
 
 function fieldsForLanguage(
@@ -494,15 +564,42 @@ export const ensureSeedData = mutation({
 export const listProjects = query({
   args: {},
   handler: async (ctx) => {
+    await requireIdentity(ctx);
+
     const projects = await ctx.db.query("projects").take(100);
-    return projects.sort((a, b) => a.name.localeCompare(b.name));
+    if (await isAdmin(ctx)) {
+      return projects.sort((a, b) => a.name.localeCompare(b.name));
+    }
+
+    const email = await getAuthenticatedEmail(ctx);
+    if (!email) return [];
+
+    const memberships = await ctx.db
+      .query("siteMembers")
+      .withIndex("by_email", (q) => q.eq("email", email))
+      .take(100);
+    const allowedProjectIds = new Set(memberships.map((membership) => membership.projectId));
+
+    return projects
+      .filter((project) => allowedProjectIds.has(project._id))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  },
+});
+
+export const getCmsAccess = query({
+  args: {},
+  handler: async (ctx) => {
+    await requireIdentity(ctx);
+    return { isAdmin: await isAdmin(ctx) };
   },
 });
 
 export const getProjectBySlug = query({
   args: { slug: v.string() },
   handler: async (ctx, args) => {
-    return await getProject(ctx, args.slug);
+    const project = await getProject(ctx, args.slug);
+    await requireSiteAccess(ctx, project);
+    return project;
   },
 });
 
@@ -514,6 +611,8 @@ export const createProject = mutation({
     editUrl: v.string(),
   },
   handler: async (ctx, args) => {
+    await requireAdmin(ctx);
+
     const slug = normalizeProjectSlug(args.slug);
     const name = args.name.trim();
     const origin = args.origin.trim();
@@ -558,6 +657,8 @@ export const updateProject = mutation({
     editUrl: v.string(),
   },
   handler: async (ctx, args) => {
+    await requireAdmin(ctx);
+
     const project = await getProject(ctx, args.slug);
     if (!project) throw new Error("Project not found.");
 
@@ -578,12 +679,78 @@ export const updateProject = mutation({
   },
 });
 
+export const listSiteOwners = query({
+  args: {
+    projectSlug: v.string(),
+  },
+  handler: async (ctx, args) => {
+    await requireAdmin(ctx);
+
+    const project = await getProject(ctx, args.projectSlug);
+    if (!project) return [];
+
+    const owners = await ctx.db
+      .query("siteMembers")
+      .withIndex("by_projectId", (q) => q.eq("projectId", project._id))
+      .take(100);
+
+    return owners.map((owner) => owner.email).sort();
+  },
+});
+
+export const addSiteOwner = mutation({
+  args: {
+    projectSlug: v.string(),
+    email: v.string(),
+  },
+  handler: async (ctx, args) => {
+    await requireAdmin(ctx);
+
+    const project = await getProject(ctx, args.projectSlug);
+    if (!project) throw new Error("Project not found.");
+
+    const email = requireNormalizedEmail(args.email);
+    const existing = await getSiteMember(ctx, project._id, email);
+    if (existing) return email;
+
+    await ctx.db.insert("siteMembers", {
+      projectId: project._id,
+      email,
+      createdAt: Date.now(),
+    });
+
+    return email;
+  },
+});
+
+export const removeSiteOwner = mutation({
+  args: {
+    projectSlug: v.string(),
+    email: v.string(),
+  },
+  handler: async (ctx, args) => {
+    await requireAdmin(ctx);
+
+    const project = await getProject(ctx, args.projectSlug);
+    if (!project) return null;
+
+    const email = requireNormalizedEmail(args.email);
+    const existing = await getSiteMember(ctx, project._id, email);
+    if (!existing) return null;
+
+    await ctx.db.delete(existing._id);
+    return email;
+  },
+});
+
 export const syncPages = mutation({
   args: {
     projectSlug: v.string(),
     pages: pageDefinitionsValidator,
   },
   handler: async (ctx, args) => {
+    await requireAdmin(ctx);
+
     const project = await getProject(ctx, args.projectSlug);
     if (!project) return [];
 
@@ -629,6 +796,7 @@ export const listPages = query({
   handler: async (ctx, args) => {
     const project = await getProject(ctx, args.projectSlug);
     if (!project) return [];
+    await requireSiteAccess(ctx, project);
 
     const pages = await listPagesForProject(ctx, project._id);
     const result = [];
@@ -664,8 +832,12 @@ export const getPage = query({
     language: languageValidator,
   },
   handler: async (ctx, args) => {
+    await requireAdmin(ctx);
+
     const result = await requireContent(ctx, args.projectSlug, args.pageSlug);
     if (!result) return null;
+    await requireSiteAccess(ctx, result.project);
+
     const storageUrlCache = new Map<string, string | null>();
     const language = languageOrDefault(args.language);
     const draftFields =
@@ -730,6 +902,8 @@ export const getPreviewContent = query({
   handler: async (ctx, args) => {
     const result = await requireContent(ctx, args.projectSlug, args.pageSlug);
     if (!result?.content) return {};
+    await requireSiteAccess(ctx, result.project);
+
     const language = languageOrDefault(args.language);
     const publishedFields =
       args.language === undefined
@@ -757,6 +931,8 @@ export const seedPublishedCollectionItems = mutation({
     items: collectionItemsValidator,
   },
   handler: async (ctx, args) => {
+    await requireAdmin(ctx);
+
     const project = await getProject(ctx, args.projectSlug);
     if (!project) return null;
 
@@ -842,6 +1018,7 @@ export const createCollectionItemDraft = mutation({
   handler: async (ctx, args) => {
     const project = await getProject(ctx, args.projectSlug);
     if (!project) return null;
+    await requireSiteAccess(ctx, project);
 
     const existing = await getCollectionItem(
       ctx,
@@ -902,6 +1079,7 @@ export const generateCollectionFileUploadUrl = mutation({
   handler: async (ctx, args) => {
     const project = await getProject(ctx, args.projectSlug);
     if (!project) return null;
+    await requireSiteAccess(ctx, project);
 
     const item = await getCollectionItem(
       ctx,
@@ -927,6 +1105,7 @@ export const saveCollectionItemDraft = mutation({
   handler: async (ctx, args) => {
     const project = await getProject(ctx, args.projectSlug);
     if (!project) return null;
+    await requireSiteAccess(ctx, project);
 
     const item = await getCollectionItem(
       ctx,
@@ -980,6 +1159,7 @@ export const listPreviewCollectionItems = query({
   handler: async (ctx, args) => {
     const project = await getProject(ctx, args.projectSlug);
     if (!project) return [];
+    await requireSiteAccess(ctx, project);
 
     const items = await ctx.db
       .query("collectionItems")
@@ -1020,6 +1200,7 @@ export const getSiteDraftState = query({
         totalDraftCount: 0,
       };
     }
+    await requireSiteAccess(ctx, project);
 
     const pages = await listPagesForProject(ctx, project._id);
     const pageDrafts = [];
@@ -1091,6 +1272,7 @@ export const publishSite = mutation({
   handler: async (ctx, args) => {
     const project = await getProject(ctx, args.projectSlug);
     if (!project) return null;
+    await requireSiteAccess(ctx, project);
 
     const pages = await listPagesForProject(ctx, project._id);
     const now = Date.now();
@@ -1178,6 +1360,7 @@ export const discardSiteDrafts = mutation({
   handler: async (ctx, args) => {
     const project = await getProject(ctx, args.projectSlug);
     if (!project) return null;
+    await requireSiteAccess(ctx, project);
 
     const pages = await listPagesForProject(ctx, project._id);
     const language = languageOrDefault(args.language);
@@ -1321,6 +1504,7 @@ export const generateImageUploadUrl = mutation({
   handler: async (ctx, args) => {
     const result = await requireContent(ctx, args.projectSlug, args.pageSlug);
     if (!result) return null;
+    await requireSiteAccess(ctx, result.project);
 
     return await ctx.storage.generateUploadUrl();
   },
@@ -1336,6 +1520,7 @@ export const saveDraft = mutation({
   handler: async (ctx, args) => {
     const result = await requireContent(ctx, args.projectSlug, args.pageSlug);
     if (!result) return null;
+    await requireSiteAccess(ctx, result.project);
 
     const existingDraftFields =
       args.language === undefined
@@ -1376,6 +1561,7 @@ export const publishPage = mutation({
   handler: async (ctx, args) => {
     const result = await requireContent(ctx, args.projectSlug, args.pageSlug);
     if (!result) return null;
+    await requireSiteAccess(ctx, result.project);
 
     const language = languageOrDefault(args.language);
     const draftFields =
@@ -1422,6 +1608,7 @@ export const discardDrafts = mutation({
   handler: async (ctx, args) => {
     const result = await requireContent(ctx, args.projectSlug, args.pageSlug);
     if (!result?.content) return null;
+    await requireSiteAccess(ctx, result.project);
 
     await ctx.db.patch(result.content._id, {
       draftFields: {},
