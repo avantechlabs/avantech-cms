@@ -39,7 +39,9 @@ test("bridge discovers image fields from src and text fields from text content",
 
   installBridge();
 
-  const fieldsMessage = postedMessages.find(({ message }) => message.type === "cms:fields");
+  const fieldsMessage = postedMessages
+    .filter(({ message }) => message.type === "cms:fields")
+    .at(-1);
   expect(fieldsMessage.origin).toBe(parentOrigin);
   expect(fieldsMessage.message.fields).toEqual(
     expect.arrayContaining([
@@ -127,6 +129,61 @@ test("bridge reports image field clicks with image kind", () => {
       type: "cms:field-clicked",
       fieldId: "hero.image",
       kind: "image",
+    },
+  });
+});
+
+test("bridge discovers paragraph fields from data-cms-type", () => {
+  document.body.innerHTML = `
+    <p data-cms-field="hero.body" data-cms-type="paragraph">Line one
+Line two</p>
+  `;
+
+  installBridge();
+
+  const fieldsMessage = postedMessages
+    .filter(({ message }) => message.type === "cms:fields")
+    .at(-1);
+  expect(fieldsMessage.message.fields).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        id: "hero.body",
+        kind: "paragraph",
+        value: "Line one\nLine two",
+        editable: true,
+      }),
+    ]),
+  );
+});
+
+test("bridge keeps Enter available while editing paragraph fields", () => {
+  document.body.innerHTML = `<p data-cms-field="hero.body" data-cms-type="paragraph">Line one</p>`;
+  installBridge();
+
+  const field = document.querySelector('[data-cms-field="hero.body"]');
+  field.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+  field.textContent = "Line one\nLine two";
+  field.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+
+  expect(field.contentEditable).toBe("plaintext-only");
+  expect(postedMessages).not.toContainEqual({
+    origin: parentOrigin,
+    message: {
+      type: "cms:field-changed",
+      fieldId: "hero.body",
+      value: "Line one\nLine two",
+    },
+  });
+
+  field.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", ctrlKey: true, bubbles: true, cancelable: true }));
+
+  expect(field.contentEditable).toBe("false");
+  expect(postedMessages).toContainEqual({
+    origin: parentOrigin,
+    message: {
+      type: "cms:field-changed",
+      fieldId: "hero.body",
+      value: "Line one\nLine two",
     },
   });
 });

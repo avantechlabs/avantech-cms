@@ -116,7 +116,7 @@ const CASE_STUDIES_COLLECTION = {
       type: "select",
       options: ["SaaS", "Finance", "Healthcare", "Retail"],
     },
-    { path: "summary", label: "Summary", type: "longText" },
+    { path: "summary", label: "Summary", type: "paragraph" },
     { path: "cover", label: "Cover image", type: "image" },
     { path: "featured", label: "Featured on homepage", type: "boolean" },
   ],

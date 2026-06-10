@@ -144,6 +144,43 @@ test("keeps active long-text input stable when preview data refreshes behind it"
   expect(onFieldChange).toHaveBeenCalledWith("card.description", "Draft description");
 });
 
+test("renders paragraph fields as multiline text controls", () => {
+  const onFieldChange = vi.fn();
+  document.body.innerHTML = `<div id="root"></div>`;
+
+  act(() => {
+    createRoot(document.getElementById("root")).render(
+      <RecordPanel
+        collection={{
+          key: "projects",
+          label: "Projects",
+          fields: [{ path: "card.description", label: "Card description", type: "paragraph" }],
+        }}
+        record={{ collectionKey: "projects", itemSlug: "brand-refresh" }}
+        recordData={{ card: { description: "Line one\nLine two" } }}
+        onFieldChange={onFieldChange}
+        onClose={() => {}}
+      />,
+    );
+  });
+
+  const input = document.querySelector("textarea");
+  expect(input.value).toBe("Line one\nLine two");
+
+  act(() => {
+    Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value").set.call(
+      input,
+      "Line one\nLine two\nLine three",
+    );
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+
+  expect(onFieldChange).toHaveBeenCalledWith(
+    "card.description",
+    "Line one\nLine two\nLine three",
+  );
+});
+
 test("renders scalar controls from field definitions", () => {
   const html = renderToStaticMarkup(
     <RecordPanel

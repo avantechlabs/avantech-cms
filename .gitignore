@@ -4,3 +4,5 @@ dist/
 .playwright-mcp/
 .gstack/
 .vercel
+CMS_AUTHORING_FOR_LLMS.md
+CONTEXT.md

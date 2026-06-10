@@ -264,7 +264,7 @@ function FieldControl({ field, value, onChange, onUploadFile, uploadable = true 
     return typeof option === "object" && option !== null ? option.label ?? option.value : option;
   }
 
-  if (type === "textarea" || type === "longText") {
+  if (type === "textarea" || type === "longText" || type === "paragraph") {
     return (
       <BufferedTextControl
         id={id}

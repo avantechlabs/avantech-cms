@@ -37,7 +37,7 @@ export function slugify(name) {
     .replace(/^-+|-+$/g, "");
 }
 
-// Human title for a record: the collection's titlePath value when it's a
+// Legible title for a record: the collection's titlePath value when it's a
 // non-empty string, otherwise a humanized slug. Never the raw slug.
 export function recordTitle(collection, slug, data) {
   const fromPath = collection?.titlePath ? getAtPath(data, collection.titlePath) : undefined;

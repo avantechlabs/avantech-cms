@@ -131,7 +131,11 @@
   function isImageField(el) {
     return el instanceof HTMLImageElement;
   }
+  function isParagraphField(el) {
+    return el.dataset.cmsType === "paragraph";
+  }
   function fieldKind(el) {
+    if (isParagraphField(el)) return "paragraph";
     return isImageField(el) ? "image" : "text";
   }
   function fieldValue(el) {
@@ -320,7 +324,10 @@
     "keydown",
     (event) => {
       if (!activeEl) return;
-      if (event.key === "Escape" || (event.key === "Enter" && !event.shiftKey)) {
+      const paragraph = isParagraphField(activeEl);
+      const commitParagraph = event.key === "Enter" && (event.metaKey || event.ctrlKey);
+      const commitText = event.key === "Enter" && !paragraph;
+      if (event.key === "Escape" || commitText || commitParagraph) {
         event.preventDefault();
         event.stopPropagation(); // don't let Enter submit the site's form, etc.
         commit();

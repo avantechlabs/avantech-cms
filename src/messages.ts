@@ -18,7 +18,7 @@ export type CmsToSiteMessage =
 
 export type FieldData = {
   id: string;
-  kind?: "image" | "text";
+  kind?: "image" | "text" | "paragraph";
   value: string;
   editable?: boolean;
   rect: { left: number; top: number; width: number; height: number };
