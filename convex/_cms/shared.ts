@@ -10,21 +10,24 @@ export const SEEDED_PROJECTS = [
   {
     slug: "project-a",
     name: "Avantech",
-    origin: "http://localhost:3001",
-    editUrl: "http://localhost:3001",
+    origin: "http://localhost:51731",
+    editUrl: "http://localhost:51731",
   },
   {
     slug: "project-b",
     name: "Sable",
-    origin: "http://localhost:3003",
-    editUrl: "http://localhost:3003",
+    origin: "http://localhost:51732",
+    editUrl: "http://localhost:51732",
   },
 ];
 
 // Demo collection records so the collections editor has something to render
 // and click out of the box. Seeded as published; insert-if-missing so re-runs
 // never clobber owner edits.
-export const SEEDED_COLLECTIONS: Record<string, Record<string, { slug: string; data: unknown }[]>> = {
+export const SEEDED_COLLECTIONS: Record<
+  string,
+  Record<string, { slug: string; data: unknown }[]>
+> = {
   "project-b": {
     caseStudies: [
       {
@@ -68,7 +71,9 @@ export const SEEDED_COLLECTIONS: Record<string, Record<string, { slug: string; d
 };
 
 export const fieldsValidator = v.record(v.string(), v.string());
-export const languageValidator = v.optional(v.union(v.literal("fr"), v.literal("en")));
+export const languageValidator = v.optional(
+  v.union(v.literal("fr"), v.literal("en")),
+);
 export const collectionItemsValidator = v.array(
   v.object({
     slug: v.string(),
@@ -93,10 +98,12 @@ export async function getProject(
   ctx: QueryCtx | MutationCtx,
   slug: string,
 ): Promise<Doc<"projects"> | null> {
-  return await ctx.db
+  const project = await ctx.db
     .query("projects")
     .withIndex("by_slug", (q) => q.eq("slug", slug))
     .unique();
+  console.log("getProject", slug, project);
+  return project;
 }
 
 export async function getPageForProject(
@@ -157,7 +164,10 @@ export async function getCollectionItem(
   return await ctx.db
     .query("collectionItems")
     .withIndex("by_projectId_and_collectionKey_and_slug", (q) =>
-      q.eq("projectId", projectId).eq("collectionKey", collectionKey).eq("slug", slug),
+      q
+        .eq("projectId", projectId)
+        .eq("collectionKey", collectionKey)
+        .eq("slug", slug),
     )
     .unique();
 }
@@ -174,9 +184,14 @@ export function normalizeProjectSlug(value: string) {
     .replace(/^-+|-+$/g, "");
 }
 
-export function setAtPath(source: unknown, path: string, value: unknown): Record<string, unknown> {
+export function setAtPath(
+  source: unknown,
+  path: string,
+  value: unknown,
+): Record<string, unknown> {
   const keys = path.split(".").filter(Boolean);
-  if (keys.length === 0) throw new Error("Collection draft path must not be empty.");
+  if (keys.length === 0)
+    throw new Error("Collection draft path must not be empty.");
 
   const root: Record<string, unknown> = isRecord(source) ? { ...source } : {};
   let cursor = root;
@@ -191,7 +206,10 @@ export function setAtPath(source: unknown, path: string, value: unknown): Record
   return root;
 }
 
-export function mergeDraftOverPublished(published: unknown, draft: unknown): unknown {
+export function mergeDraftOverPublished(
+  published: unknown,
+  draft: unknown,
+): unknown {
   if (!isRecord(published) || !isRecord(draft)) return draft ?? published;
 
   const merged: Record<string, unknown> = { ...published };
@@ -267,12 +285,21 @@ export function clearCollectionDataForLanguage(
   return next;
 }
 
-export function publishedCollectionData(item: Doc<"collectionItems">, language: string | undefined) {
+export function publishedCollectionData(
+  item: Doc<"collectionItems">,
+  language: string | undefined,
+) {
   if (language === undefined) return item.publishedData;
-  return collectionDataForLanguage(item.publishedDataByLanguage, language) ?? item.publishedData;
+  return (
+    collectionDataForLanguage(item.publishedDataByLanguage, language) ??
+    item.publishedData
+  );
 }
 
-export function previewCollectionData(item: Doc<"collectionItems">, language: string | undefined) {
+export function previewCollectionData(
+  item: Doc<"collectionItems">,
+  language: string | undefined,
+) {
   if (language === undefined) {
     return mergeDraftOverPublished(item.publishedData, item.draftData);
   }
