@@ -230,10 +230,10 @@ test("useCmsCollection can read records for a selected language", () => {
   });
 });
 
-test("useCmsCollection reads preview records in edit mode", () => {
+test("useCmsCollection keeps iframe collection reads public in edit mode", () => {
   window.history.replaceState({}, "", "/?edit=1");
   queryState.result = [
-    { slug: "draft-record", data: { card: { title: "Draft record" } } },
+    { slug: "published-record", data: { card: { title: "Published record" } } },
   ];
   let records;
 
@@ -244,11 +244,15 @@ test("useCmsCollection reads preview records in edit mode", () => {
 
   const html = renderToStaticMarkup(<CollectionConsumer />);
 
-  expect(html).toContain("Draft record");
+  expect(html).toContain("Published record");
   expect(records).toEqual([
-    { slug: "draft-record", data: { card: { title: "Draft record" } } },
+    { slug: "published-record", data: { card: { title: "Published record" } } },
   ]);
   expect(queryState.calls).toContainEqual({
+    query: "cms:listPublishedCollectionItems",
+    args: { projectSlug: "project-a", collectionKey: "projects", language: "fr" },
+  });
+  expect(queryState.calls).not.toContainEqual({
     query: "cms:listPreviewCollectionItems",
     args: { projectSlug: "project-a", collectionKey: "projects", language: "fr" },
   });

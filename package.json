@@ -3,7 +3,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite --host 0.0.0.0 --port 3000",
+    "dev": "pnpm -r --parallel --stream --include-workspace-root --filter avantech-cms --filter site-demo --filter sable-demo run dev:stack",
+    "dev:stack": "vite --host 0.0.0.0 --port 51730 --strictPort",
+    "dev:cms": "pnpm run dev:stack",
     "build": "vite build",
     "dev:example": "pnpm --filter site-demo dev",
     "dev:project-a": "pnpm --filter site-demo dev",
