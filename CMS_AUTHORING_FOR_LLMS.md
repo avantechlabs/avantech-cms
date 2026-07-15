@@ -292,6 +292,23 @@ Also acceptable if your runtime applies published DOM values directly:
 <span data-cms-field="hero.ctaPrimary">Contact us</span>
 ```
 
+For multiline body copy, mark the field as a paragraph:
+
+```tsx
+<p data-cms-field="hero.subhead" data-cms-type="paragraph">
+  Intro copy that may contain line breaks.
+</p>
+```
+
+Paragraph fields are still plain text. The CMS preserves `\n` characters, and
+the website controls rendering. Use CSS such as:
+
+```css
+.bodyCopy {
+  white-space: pre-line;
+}
+```
+
 Do not put a CMS field on a structural parent that contains other CMS fields:
 
 ```tsx
@@ -499,7 +516,7 @@ const CASE_STUDIES_COLLECTION = {
       type: "select",
       options: ["SaaS", "Finance", "Healthcare", "Retail"],
     },
-    { path: "summary", label: "Summary", type: "longText" },
+    { path: "summary", label: "Summary", type: "paragraph" },
     { path: "cover", label: "Cover image", type: "image" },
     { path: "featured", label: "Featured on homepage", type: "boolean" },
   ],
@@ -510,7 +527,7 @@ Supported field types in the current editor:
 
 ```text
 text
-longText
+paragraph
 select
 boolean
 number
@@ -519,6 +536,12 @@ file
 object
 list
 ```
+
+Use `text` for short single-line copy. Use `paragraph` for body copy that
+may contain line breaks. The editor stores `paragraph` values as plain strings
+with `\n`, so the website must render them with paragraph-aware CSS such as
+`white-space: pre-line` or an equivalent component. `longText` is accepted as a
+legacy alias, but new sites should use `paragraph`.
 
 For nested objects:
 
@@ -529,7 +552,7 @@ For nested objects:
   type: "object",
   fields: [
     { path: "seoTitle", label: "SEO title", type: "text" },
-    { path: "seoDescription", label: "SEO description", type: "longText" },
+    { path: "seoDescription", label: "SEO description", type: "paragraph" },
   ],
 }
 ```
