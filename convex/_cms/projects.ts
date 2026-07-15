@@ -24,6 +24,8 @@ import {
 export const ensureSeedData = mutation({
   args: {},
   handler: async (ctx) => {
+    await requireAdmin(ctx);
+
     const now = Date.now();
 
     for (const seed of SEEDED_PROJECTS) {
@@ -124,7 +126,10 @@ export const getCmsAccess = query({
   args: {},
   handler: async (ctx) => {
     await requireIdentity(ctx);
-    return { isAdmin: await isAdmin(ctx) };
+    return {
+      isAdmin: await isAdmin(ctx),
+      email: await getAuthenticatedEmail(ctx),
+    };
   },
 });
 

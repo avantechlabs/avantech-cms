@@ -102,7 +102,6 @@ export async function getProject(
     .query("projects")
     .withIndex("by_slug", (q) => q.eq("slug", slug))
     .unique();
-  console.log("getProject", slug, project);
   return project;
 }
 

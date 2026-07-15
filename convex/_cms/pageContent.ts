@@ -179,8 +179,6 @@ export const getPage = query({
     language: languageValidator,
   },
   handler: async (ctx, args) => {
-    await requireAdmin(ctx);
-
     const result = await requireContent(ctx, args.projectSlug, args.pageSlug);
     if (!result) return null;
     await requireSiteAccess(ctx, result.project);
@@ -279,6 +277,8 @@ export const seedDiscoveredFields = mutation({
     fields: discoveredFieldsValidator,
   },
   handler: async (ctx, args) => {
+    await requireAdmin(ctx);
+
     const result = await requireContent(ctx, args.projectSlug, args.pageSlug);
     if (!result) return null;
 
