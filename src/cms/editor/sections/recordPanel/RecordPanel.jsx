@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
-import { getAtPath, humanizeFieldLabel, recordTitle } from "./humanize.js";
+import { getAtPath, humanizeFieldLabel, recordTitle } from "../../../../humanize.js";
+import "./RecordPanel.module.css";
 
 const MAX_FILE_BYTES = 10 * 1024 * 1024;
 

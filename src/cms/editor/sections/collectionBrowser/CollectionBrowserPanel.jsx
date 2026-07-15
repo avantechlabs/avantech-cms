@@ -1,5 +1,6 @@
 import React, { useState } from "react";
-import { recordTitle, slugify } from "./humanize.js";
+import { recordTitle, slugify } from "../../../../humanize.js";
+import "./CollectionBrowserPanel.module.css";
 
 export function CollectionBrowserPanel({
   collection,

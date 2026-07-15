@@ -18,6 +18,31 @@ import {
 } from "./shared";
 import { resolveStorageInValue } from "./storage";
 
+export const listCollections = query({
+  args: {
+    projectSlug: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const project = await getProject(ctx, args.projectSlug);
+    if (!project) return [];
+    await requireSiteAccess(ctx, project);
+
+    const items = await ctx.db
+      .query("collectionItems")
+      .withIndex("by_projectId", (q) => q.eq("projectId", project._id))
+      .take(1000);
+
+    const counts = new Map<string, number>();
+    for (const item of items) {
+      counts.set(item.collectionKey, (counts.get(item.collectionKey) ?? 0) + 1);
+    }
+
+    return [...counts.entries()]
+      .map(([key, count]) => ({ key, count }))
+      .sort((a, b) => a.key.localeCompare(b.key));
+  },
+});
+
 export const seedPublishedCollectionItems = mutation({
   args: {
     projectSlug: v.string(),

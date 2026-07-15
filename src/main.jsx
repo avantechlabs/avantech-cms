@@ -7,9 +7,21 @@ import {
   useConvexAuth,
 } from "@convex-dev/auth/react";
 import { api } from "../convex/_generated/api.js";
-import { CollectionBrowserPanel } from "./CollectionBrowserPanel.jsx";
-import { CollectionsRailSection } from "./CollectionsRailSection.jsx";
-import { RecordPanel } from "./RecordPanel.jsx";
+import { BRIDGE_TOKENS } from "./cms/editor/lib/bridgeTokens";
+import { imageFieldTitle, MAX_IMAGE_BYTES } from "./cms/editor/lib/imageFields";
+import { CollectionBrowserPanel } from "./cms/editor/sections/collectionBrowser/CollectionBrowserPanel.jsx";
+import { BottomBar } from "./cms/editor/sections/bottomBar/BottomBar";
+import { Dock } from "./cms/editor/sections/dock/Dock";
+import { ImagePanel } from "./cms/editor/sections/imagePanel/ImagePanel";
+import { PreviewFrame } from "./cms/editor/sections/previewFrame/PreviewFrame";
+import { EditorUx } from "./cms/editor/sections/ux/EditorUx";
+import { RecordPanel } from "./cms/editor/sections/recordPanel/RecordPanel.jsx";
+import { SignInPage } from "./cms/auth/SignInPage.jsx";
+import { SessionBar } from "./cms/auth/SessionBar.jsx";
+import { AppShell } from "./cms/shell/AppShell.jsx";
+import { useLinkInterceptor, useRoute } from "./cms/lib/router.js";
+import { PagesView } from "./cms/views/PagesView.jsx";
+import { SiteSettings } from "./cms/views/SiteSettings.jsx";
 import { useCmsProject } from "./hooks/useCmsProject.js";
 import { useFieldManager } from "./hooks/useFieldManager.js";
 import { useIframeMessaging } from "./hooks/useIframeMessaging.js";
@@ -17,62 +29,26 @@ import "./style.css";
 
 const convexUrl = import.meta.env.VITE_CONVEX_URL;
 
-// Tokens the in-iframe bridge needs to match chrome theme (outlines, chip, drafts).
-const BRIDGE_TOKENS = {
-  light: {
-    "--cms-gold": "#FDB714",
-    "--cms-text": "#1A1916",
-    "--cms-surface": "#FFFFFF",
-    "--cms-line": "#E7E3DC",
-    "--cms-draft": "#B7791F",
-    "--cms-draft-tint": "rgba(183,121,31,0.10)",
-  },
-  dark: {
-    "--cms-gold": "#FDB714",
-    "--cms-text": "#F5F2EA",
-    "--cms-surface": "#201E18",
-    "--cms-line": "rgba(245,242,234,0.18)",
-    "--cms-draft": "#E0A94A",
-    "--cms-draft-tint": "rgba(224,169,74,0.12)",
-  },
-};
+const SITE_SECTIONS = new Set(["pages", "settings"]);
 
 export function getCmsRoute(pathname = window.location.pathname) {
-  const [, first, second] = pathname.split("/");
-  if (!first || first === "cms") {
-    return second ? { kind: "editor", projectSlug: second } : { kind: "dashboard" };
-  }
-  return { kind: "editor", projectSlug: first };
+  const parts = pathname.split("/").filter(Boolean);
+  const rest = parts[0] === "cms" ? parts.slice(1) : parts;
+  if (rest.length === 0) return { kind: "home" };
+  const [projectSlug, second] = rest;
+  return {
+    kind: "site",
+    projectSlug,
+    section: SITE_SECTIONS.has(second) ? second : "editor",
+  };
 }
-
-// Owners never see raw field ids. Build a plain, sentence-cased phrase and keep
-// the descriptive noun ("hero.image" -> "Hero image") so the label reads as a
-// thing an owner recognizes, not a codeword or a raw id.
-const FIELD_SYNONYMS = {
-  desc: "description", cta: "button", subtitle: "subtitle", lede: "intro",
-  eyebrow: "label", copy: "text", nav: "nav", brand: "brand", hero: "hero",
-  stats: "stat", features: "feature", steps: "step", testimonial: "quote",
-};
-
-function imageFieldTitle(fieldId) {
-  const phrase = fieldId
-    .split(".")
-    .map((seg) => {
-      if (/^\d+$/.test(seg)) return String(Number(seg) + 1);
-      if (FIELD_SYNONYMS[seg]) return FIELD_SYNONYMS[seg];
-      return seg.replace(/([a-z0-9])([A-Z])/g, "$1 $2");
-    })
-    .join(" ")
-    .toLowerCase();
-  return phrase.charAt(0).toUpperCase() + phrase.slice(1);
-}
-
-const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 
 // Create the Convex client once at module load, not per render.
 const convexClient = convexUrl ? new ConvexReactClient(convexUrl) : null;
 
 function CmsApp() {
+  useLinkInterceptor();
+
   if (!convexClient) {
     return (
       <div className="missingConfig">
@@ -84,7 +60,7 @@ function CmsApp() {
   return (
     <ConvexAuthProvider client={convexClient}>
       <AuthGate>
-        {window.location.pathname.startsWith("/admin/projects") ? <ProjectsAdmin /> : <Cms />}
+        <Cms />
       </AuthGate>
     </ConvexAuthProvider>
   );
@@ -102,366 +78,54 @@ function AuthGate({ children }) {
     );
   }
 
-  if (!isAuthenticated) return <SignInPanel />;
+  if (!isAuthenticated) return <SignInPage />;
 
   return children;
 }
 
-function SignInPanel() {
-  const { signIn } = useAuthActions();
-  const [flow, setFlow] = useState("signIn");
-  const [status, setStatus] = useState("idle");
-
-  function onSubmit(event) {
-    event.preventDefault();
-    setStatus("submitting");
-    const formData = new FormData(event.currentTarget);
-    signIn("password", formData)
-      .then(() => setStatus("idle"))
-      .catch((error) => {
-        console.error(error);
-        setStatus("error");
-      });
-  }
-
-  return (
-    <main className="missingConfig">
-      <h1>Avantech CMS</h1>
-      <form onSubmit={onSubmit}>
-        <label>
-          <span>Email</span>
-          <input name="email" type="email" autoComplete="email" required />
-        </label>
-        <label>
-          <span>Password</span>
-          <input
-            name="password"
-            type="password"
-            autoComplete={flow === "signIn" ? "current-password" : "new-password"}
-            minLength={8}
-            required
-          />
-        </label>
-        <input name="flow" type="hidden" value={flow} />
-        {status === "error" && (
-          <p role="alert">
-            Could not {flow === "signIn" ? "sign in" : "create this account"}. Check the email
-            and password, then try again.
-          </p>
-        )}
-        <button type="submit" disabled={status === "submitting"}>
-          {status === "submitting" ? "Please wait..." : flow === "signIn" ? "Sign in" : "Create account"}
-        </button>
-        <button
-          type="button"
-          onClick={() => {
-            setStatus("idle");
-            setFlow((current) => (current === "signIn" ? "signUp" : "signIn"));
-          }}
-        >
-          {flow === "signIn" ? "Create an account" : "Sign in instead"}
-        </button>
-      </form>
-    </main>
-  );
-}
-
-const emptyProjectForm = {
-  slug: "",
-  name: "",
-  origin: "",
-  editUrl: "",
-};
-
-function normalizeSlug(value) {
-  return value
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9-]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-}
-
-function ProjectsAdmin() {
-  const projects = useQuery(api.cms.listProjects) ?? [];
-  const ensureSeedData = useMutation(api.cms.ensureSeedData);
-  const createProject = useMutation(api.cms.createProject);
-  const updateProject = useMutation(api.cms.updateProject);
-  const addSiteOwner = useMutation(api.cms.addSiteOwner);
-  const removeSiteOwner = useMutation(api.cms.removeSiteOwner);
-  const [draft, setDraft] = useState(emptyProjectForm);
-  const [editingSlug, setEditingSlug] = useState(null);
-  const [saveState, setSaveState] = useState("idle");
-  const [ownerEmail, setOwnerEmail] = useState("");
-  const [ownerState, setOwnerState] = useState("idle");
-
-  useEffect(() => {
-    ensureSeedData();
-  }, [ensureSeedData]);
-
-  const editingProject = editingSlug
-    ? projects.find((project) => project.slug === editingSlug)
-    : null;
-  const ownerEmails = useQuery(
-    api.cms.listSiteOwners,
-    editingProject ? { projectSlug: editingProject.slug } : "skip",
-  ) ?? [];
-  const canSave =
-    draft.slug.trim() &&
-    draft.name.trim() &&
-    draft.origin.trim() &&
-    draft.editUrl.trim() &&
-    saveState !== "saving";
-
-  function updateDraft(key, value) {
-    setDraft((current) => ({ ...current, [key]: value }));
-  }
-
-  function resetForm() {
-    setEditingSlug(null);
-    setDraft(emptyProjectForm);
-    setSaveState("idle");
-    setOwnerEmail("");
-    setOwnerState("idle");
-  }
-
-  function startEdit(project) {
-    setEditingSlug(project.slug);
-    setDraft({
-      slug: project.slug,
-      name: project.name,
-      origin: project.origin,
-      editUrl: project.editUrl,
-    });
-    setSaveState("idle");
-    setOwnerEmail("");
-    setOwnerState("idle");
-  }
-
-  function onAddOwner(event) {
-    event?.preventDefault();
-    if (!editingProject || !ownerEmail.trim() || ownerState === "saving") return;
-
-    setOwnerState("saving");
-    addSiteOwner({ projectSlug: editingProject.slug, email: ownerEmail })
-      .then(() => {
-        setOwnerEmail("");
-        setOwnerState("saved");
-      })
-      .catch((error) => {
-        console.error(error);
-        setOwnerState("error");
-      });
-  }
-
-  function onRemoveOwner(email) {
-    if (!editingProject) return;
-    setOwnerState("saving");
-    removeSiteOwner({ projectSlug: editingProject.slug, email })
-      .then(() => setOwnerState("saved"))
-      .catch((error) => {
-        console.error(error);
-        setOwnerState("error");
-      });
-  }
-
-  function onSubmit(event) {
-    event.preventDefault();
-    if (!canSave) return;
-
-    const payload = {
-      slug: normalizeSlug(draft.slug),
-      name: draft.name.trim(),
-      origin: draft.origin.trim(),
-      editUrl: draft.editUrl.trim(),
-    };
-
-    setSaveState("saving");
-    const action = editingProject
-      ? updateProject({ ...payload, slug: editingProject.slug })
-      : createProject(payload);
-
-    action
-      .then((project) => {
-        setSaveState("saved");
-        if (project?.slug) {
-          setEditingSlug(project.slug);
-          setDraft({
-            slug: project.slug,
-            name: project.name,
-            origin: project.origin,
-            editUrl: project.editUrl,
-          });
-        } else {
-          resetForm();
-        }
-      })
-      .catch((error) => {
-        console.error(error);
-        setSaveState("error");
-      });
-  }
-
-  return (
-    <main className="adminShell">
-      <header className="adminTop">
-        <div>
-          <p className="adminEyebrow">Admin</p>
-          <h1>Sites</h1>
-        </div>
-        <a className="barBtn primary" href={`/cms/${projects[0]?.slug ?? "project-a"}`}>
-          Open editor
-        </a>
-      </header>
-
-      <section className="adminGrid" aria-label="Project registry">
-        <div className="adminPanel">
-          <div className="adminPanelHead">
-            <h2>Registered sites</h2>
-            <button className="barBtn" type="button" onClick={resetForm}>
-              New site
-            </button>
-          </div>
-          <div className="projectList">
-            {projects.length > 0 ? (
-              projects.map((project) => (
-                <article
-                  key={project._id}
-                  className={`projectRow${project.slug === editingSlug ? " on" : ""}`}
-                >
-                  <button type="button" onClick={() => startEdit(project)}>
-                    <strong>{project.name}</strong>
-                    <span>{project.slug}</span>
-                  </button>
-                  <a href={`/cms/${project.slug}`}>Edit</a>
-                </article>
-              ))
-            ) : (
-              <p className="adminEmpty">No sites registered yet.</p>
-            )}
-          </div>
-        </div>
-
-        <form className="adminPanel projectForm" onSubmit={onSubmit}>
-          <div className="adminPanelHead">
-            <h2>{editingProject ? "Edit site" : "Create site"}</h2>
-            {saveState === "saved" && <span className="savePill">Saved</span>}
-            {saveState === "error" && <span className="savePill error">Couldn’t save</span>}
-          </div>
-
-          <label>
-            <span>Name</span>
-            <input
-              value={draft.name}
-              onChange={(event) => updateDraft("name", event.target.value)}
-              placeholder="Sable"
-            />
-          </label>
-
-          <label>
-            <span>Slug</span>
-            <input
-              value={draft.slug}
-              onChange={(event) => updateDraft("slug", normalizeSlug(event.target.value))}
-              placeholder="sable"
-              disabled={Boolean(editingProject)}
-            />
-          </label>
-
-          <label>
-            <span>Origin</span>
-            <input
-              value={draft.origin}
-              onChange={(event) => updateDraft("origin", event.target.value)}
-              placeholder="https://sable.com"
-            />
-          </label>
-
-          <label>
-            <span>Edit URL</span>
-            <input
-              value={draft.editUrl}
-              onChange={(event) => updateDraft("editUrl", event.target.value)}
-              placeholder="https://sable.com"
-            />
-          </label>
-
-          <div className="adminActions">
-            <button className="barBtn primary" type="submit" disabled={!canSave}>
-              {saveState === "saving" ? "Saving…" : editingProject ? "Update site" : "Create site"}
-            </button>
-            {editingProject && (
-              <a className="barBtn" href={`/cms/${editingProject.slug}`}>
-                Open editor
-              </a>
-            )}
-          </div>
-
-          {editingProject && (
-            <section className="ownerManager" aria-label="Site owners">
-              <div className="adminPanelHead">
-                <h2>Site owners</h2>
-                {ownerState === "saved" && <span className="savePill">Saved</span>}
-                {ownerState === "error" && <span className="savePill error">Couldn’t update</span>}
-              </div>
-              <div className="ownerAdd">
-                <label>
-                  <span>Owner email</span>
-                  <input
-                    type="email"
-                    value={ownerEmail}
-                    onChange={(event) => setOwnerEmail(event.target.value)}
-                    placeholder="owner@example.com"
-                  />
-                </label>
-                <button
-                  className="barBtn"
-                  type="button"
-                  onClick={onAddOwner}
-                  disabled={!ownerEmail.trim() || ownerState === "saving"}
-                >
-                  Add owner
-                </button>
-              </div>
-              <div className="ownerList">
-                {ownerEmails.length > 0 ? (
-                  ownerEmails.map((email) => (
-                    <div className="ownerRow" key={email}>
-                      <span>{email}</span>
-                      <button
-                        className="barBtn"
-                        type="button"
-                        onClick={() => onRemoveOwner(email)}
-                        disabled={ownerState === "saving"}
-                      >
-                        Remove
-                      </button>
-                    </div>
-                  ))
-                ) : (
-                  <p className="adminEmpty">No site owners assigned yet.</p>
-                )}
-              </div>
-            </section>
-          )}
-        </form>
-      </section>
-    </main>
-  );
-}
-
 function Cms() {
-  const route = getCmsRoute();
+  const location = useRoute();
+  const route = getCmsRoute(location.pathname);
   const projects = useQuery(api.cms.listProjects);
+  const access = useQuery(api.cms.getCmsAccess);
 
-  if (projects === undefined) {
-    return <AccessMessage title="Loading sites" body="Checking your site access." />;
+  if (projects === undefined || access === undefined) {
+    return <AccessMessage title="Just a moment" body="Checking your site access…" />;
   }
 
-  if (route.kind === "dashboard") {
-    return <CmsDashboard projects={projects} />;
+  const isAdmin = access?.isAdmin === true;
+  const email = access?.email ?? "";
+
+  const shell = (project, section, view) => (
+    <AppShell
+      project={project}
+      projects={projects}
+      section={section}
+      isAdmin={isAdmin}
+      email={email}
+    >
+      {view}
+    </AppShell>
+  );
+
+  if (route.kind === "site" && route.projectSlug === "new") {
+    if (!isAdmin) {
+      return (
+        <AccessMessage
+          title="Access denied"
+          body="Only an Avantech admin can create sites."
+          action={<a className="barBtn primary" href="/cms">Return to sites</a>}
+        />
+      );
+    }
+    return shell(null, "settings", <SiteSettings key="new" project={null} />);
   }
 
-  const project = projects.find((item) => item.slug === route.projectSlug);
+  const project =
+    route.kind === "home"
+      ? projects[0]
+      : projects.find((item) => item.slug === route.projectSlug);
+
   if (!project) {
     return projects.length === 0 ? (
       <NoAccess />
@@ -474,35 +138,32 @@ function Cms() {
     );
   }
 
-  return <CmsEditor projectSlug={project.slug} />;
-}
+  const section = route.kind === "home" ? "editor" : route.section;
 
-function CmsDashboard({ projects }) {
-  if (projects.length === 0) return <NoAccess />;
+  if (section === "settings" && !isAdmin) {
+    return (
+      <AccessMessage
+        title="Access denied"
+        body="Site settings are managed by Avantech."
+        action={<a className="barBtn primary" href={`/cms/${project.slug}`}>Back to the editor</a>}
+      />
+    );
+  }
 
-  return (
-    <main className="accessShell">
-      <header className="accessHeader">
-        <p className="adminEyebrow">Avantech CMS</p>
-        <h1>Sites</h1>
-      </header>
-      <section className="siteGrid" aria-label="Assigned sites">
-        {projects.map((project) => (
-          <a className="siteTile" href={`/cms/${project.slug}`} key={project._id}>
-            <strong>{project.name}</strong>
-            <span>{project.slug}</span>
-          </a>
-        ))}
-      </section>
-    </main>
-  );
+  if (section === "pages") {
+    return shell(project, "pages", <PagesView key={project.slug} project={project} />);
+  }
+  if (section === "settings") {
+    return shell(project, "settings", <SiteSettings key={project.slug} project={project} />);
+  }
+  return shell(project, "editor", <CmsEditor key={project.slug} projectSlug={project.slug} />);
 }
 
 function NoAccess() {
   return (
     <AccessMessage
-      title="No site access"
-      body="This email has not been assigned to an Avantech CMS site."
+      title="You’re not connected to a site yet"
+      body="Site access is tied to the email you signed in with. If you’re expecting access, your Avantech contact can connect this email in a minute — or try signing in with the email your site was set up with."
     />
   );
 }
@@ -511,7 +172,10 @@ function AccessMessage({ title, body, action = null }) {
   return (
     <main className="accessShell centered">
       <section className="accessPanel">
-        <p className="adminEyebrow">Avantech CMS</p>
+        <div className="accessPanelTop">
+          <p className="adminEyebrow">Avantech CMS</p>
+          <SessionBar />
+        </div>
         <h1>{title}</h1>
         <p>{body}</p>
         {action}
@@ -521,7 +185,9 @@ function AccessMessage({ title, body, action = null }) {
 }
 
 function CmsEditor({ projectSlug }) {
-  const [selectedPageSlug, setSelectedPageSlug] = useState("home");
+  const [selectedPageSlug, setSelectedPageSlug] = useState(
+    () => new URLSearchParams(window.location.search).get("page") || "home",
+  );
   const [selectedLanguage, setSelectedLanguage] = useState("fr");
 
   const {
@@ -552,11 +218,12 @@ function CmsEditor({ projectSlug }) {
 
   const [mode, setMode] = useState("edit");
   const [theme, setTheme] = useState("light");
-  const [railOpen, setRailOpen] = useState(false);
   const [toast, setToast] = useState("");
   const [hint, setHint] = useState(false);
   const [collections, setCollections] = useState([]);
-  const [selectedCollectionKey, setSelectedCollectionKey] = useState(null);
+  const [selectedCollectionKey, setSelectedCollectionKey] = useState(
+    () => new URLSearchParams(window.location.search).get("collection"),
+  );
   const [selectedField, setSelectedField] = useState(null);
   const [selectedRecord, setSelectedRecord] = useState(null);
   const [pendingPreview, setPendingPreview] = useState(null); // { fieldId, url }
@@ -579,11 +246,14 @@ function CmsEditor({ projectSlug }) {
     .join("|");
   const cmsAccess = useQuery(api.cms.getCmsAccess);
   const canSyncStructure = cmsAccess?.isAdmin === true;
+  const { signOut } = useAuthActions();
   const activeCollectionKey = selectedRecord?.collectionKey ?? selectedCollectionKey;
   const previewFieldsReadyForLanguage = pageLanguage === selectedLanguage;
+  // Gate on cmsAccess so a ?collection= deep link doesn't fire this query
+  // before the auth token reaches the connection.
   const previewCollectionItems = useQuery(
     api.cms.listPreviewCollectionItems,
-    activeCollectionKey
+    activeCollectionKey && cmsAccess
       ? { projectSlug, collectionKey: activeCollectionKey, language: selectedLanguage }
       : "skip",
   ) ?? [];
@@ -686,23 +356,34 @@ function CmsEditor({ projectSlug }) {
     send({ type: "cms:set-draft-records", records: collectionDrafts });
   }, [collectionDraftSignature, send]);
 
+  // Sidebar navigation within this site changes the query string without a
+  // remount — mirror ?page= / ?collection= into editor state.
+  const { search } = useRoute();
   useEffect(() => {
-    setSelectedPageSlug("home");
-  }, [projectSlug]);
+    const params = new URLSearchParams(search);
+    setSelectedPageSlug(params.get("page") || "home");
+    setSelectedCollectionKey(params.get("collection"));
+  }, [search]);
 
+  // Reset selection state when the page or language changes in-session — but
+  // not on mount, or it would wipe the ?page= / ?collection= deep links.
+  const selectionResetReady = useRef(false);
   useEffect(() => {
+    if (!selectionResetReady.current) {
+      selectionResetReady.current = true;
+      return;
+    }
     resetForProject();
     setCollections([]);
     setSelectedCollectionKey(null);
     setSelectedField(null);
     setSelectedRecord(null);
-  }, [projectSlug, selectedPageSlug, selectedLanguage]);
+  }, [selectedPageSlug, selectedLanguage]);
 
   // Mode → html attribute (drives chrome recede) + iframe affordances + first-run hint.
   useEffect(() => {
     document.documentElement.dataset.mode = mode;
     send({ type: "cms:set-mode", mode });
-    if (mode === "view") setRailOpen(false);
     if (mode === "edit" && !sessionStorage.getItem("cms-hint-seen")) {
       sessionStorage.setItem("cms-hint-seen", "1");
       setHint(true);
@@ -717,16 +398,6 @@ function CmsEditor({ projectSlug }) {
     send({ type: "cms:set-theme", theme, tokens: BRIDGE_TOKENS[theme] });
   }, [theme, send]);
 
-  // Esc closes the rail (universal "back out one level" for the panel).
-  useEffect(() => {
-    if (!railOpen) return;
-    function onKey(event) {
-      if (event.key === "Escape") setRailOpen(false);
-    }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [railOpen]);
-
   function showToast(message) {
     setToast(message);
     clearTimeout(toastTimer.current);
@@ -739,16 +410,16 @@ function CmsEditor({ projectSlug }) {
       return;
     }
     const n = changeCount;
-    publish().then(() => showToast(`Published ${n} change${n > 1 ? "s" : ""}`));
+    publish().then(() =>
+      showToast(n > 1 ? `${n} changes are now live` : "Your change is now live"),
+    );
   }
 
   function onDiscard() {
     if (changeCount === 0) return;
-    const n = changeCount;
-    if (!window.confirm(`Discard ${n} unpublished change${n > 1 ? "s" : ""}?`)) return;
     discard().then(() => {
       send({ type: "cms:apply-fields", fields: publishedFields });
-      showToast("Discarded");
+      showToast("Changes discarded — your live site is unchanged");
     });
   }
 
@@ -893,203 +564,43 @@ function CmsEditor({ projectSlug }) {
 
   return (
     <div className="stage">
-      {/* Mode + theme dock */}
-      <div className="dock">
-        <button
-          className="iconBtn"
-          onClick={() => setTheme((t) => (t === "dark" ? "light" : "dark"))}
-          title="Toggle theme"
-          aria-label="Toggle theme"
-        >
-          {theme === "dark" ? (
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M2 12h2M20 12h2M5 5l1.5 1.5M17.5 17.5L19 19M19 5l-1.5 1.5M6.5 17.5L5 19" />
-            </svg>
-          ) : (
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
-            </svg>
-          )}
-        </button>
-        <div className="modeToggle" role="group" aria-label="Mode">
-          <button className={mode === "view" ? "on" : ""} onClick={() => setMode("view")}>View</button>
-          <button className={mode === "edit" ? "on" : ""} onClick={() => setMode("edit")}>Edit</button>
-        </div>
-        <div className="modeToggle" role="group" aria-label="Language">
-          <button
-            className={selectedLanguage === "fr" ? "on" : ""}
-            onClick={() => setSelectedLanguage("fr")}
-          >
-            FR
-          </button>
-          <button
-            className={selectedLanguage === "en" ? "on" : ""}
-            onClick={() => setSelectedLanguage("en")}
-          >
-            EN
-          </button>
-        </div>
-      </div>
+      <Dock
+        language={selectedLanguage}
+        mode={mode}
+        onLanguageChange={setSelectedLanguage}
+        onModeChange={setMode}
+        onSignOut={() => void signOut()}
+        onThemeToggle={() => setTheme((t) => (t === "dark" ? "light" : "dark"))}
+        theme={theme}
+      />
 
-      {/* Collections rail */}
-      <button className="railTab" onClick={() => setRailOpen((o) => !o)} aria-label="Open collections">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-          <rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" />
-          <rect x="3" y="14" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" />
-        </svg>
-      </button>
-      {railOpen && <div className="scrim" onClick={() => setRailOpen(false)} />}
-      <aside className={`rail${railOpen ? " open" : ""}`} aria-hidden={!railOpen}>
-        <div className="railHead">
-          <span className="title">Navigate</span>
-          <button className="railClose" onClick={() => setRailOpen(false)} aria-label="Close">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12" /></svg>
-          </button>
-        </div>
+      <PreviewFrame iframeRef={iframeRef} projectName={projectName} siteUrl={siteUrl} />
 
-        <div className="railGroup">
-          <div className="railLabel">Sites</div>
-          {projects.map((item) => (
-            <a key={item._id} className={`railRow${item.slug === projectSlug ? " on" : ""}`} href={`/cms/${item.slug}`}>
-              {item.name}
-              {item.slug === projectSlug && changeCount > 0 && <span className="draftDot" />}
-            </a>
-          ))}
-        </div>
-
-        <div className="railGroup">
-          <div className="railLabel">Pages</div>
-          {pages.length > 0 ? (
-            pages.map((item) => (
-              <button
-                key={item.slug}
-                type="button"
-                className={`railRow${item.slug === selectedPageSlug ? " on" : ""}`}
-                onClick={() => {
-                  setRailOpen(false);
-                  closeImageCard();
-                  setSelectedCollectionKey(null);
-                  setSelectedField(null);
-                  setSelectedRecord(null);
-                  setSelectedPageSlug(item.slug);
-                }}
-              >
-                {item.title}
-                {item.draftCount > 0 && <span className="draftDot" />}
-              </button>
-            ))
-          ) : (
-            <div className="railRow muted">No pages yet</div>
-          )}
-        </div>
-
-        <CollectionsRailSection
-          collections={collections}
-          draftCollectionKeys={[...new Set(collectionDrafts.map((draft) => draft.collectionKey))]}
-          onSelectCollection={(collectionKey) => {
-            setRailOpen(false);
-            setSelectedField(null);
-            setSelectedRecord(null);
-            setSelectedCollectionKey(collectionKey);
-          }}
-        />
-
-        <div className="railGroup">
-          <div className="railLabel">Media</div>
-          <div className="railRow muted">No media yet</div>
-        </div>
-      </aside>
-
-      {/* The framed customer site */}
-      <div className="frame">
-        {siteUrl ? (
-          <iframe ref={iframeRef} src={siteUrl} title={`${projectName} preview`} />
-        ) : (
-          <div className="loading">Loading preview…</div>
-        )}
-      </div>
-
-      {/* Bottom action bar */}
-      <div className="bottomBar" role="toolbar" aria-label="Editor actions">
-        <div className="status">
-          <span className="dot" />
-          <span>Editing {projectName} / {pageName}</span>
-          {changeCount > 0 && <span className="unpublished">· {changeCount} unpublished</span>}
-        </div>
-        <span className="sep" />
-        <button className="barBtn" onClick={onDiscard} disabled={changeCount === 0}>Discard</button>
-        <button className="barBtn primary" onClick={onPublish} disabled={changeCount === 0}>
-          {changeCount > 0 && <span className="badge">{changeCount}</span>}
-          Publish
-        </button>
-      </div>
+      <BottomBar
+        changeCount={changeCount}
+        onDiscard={onDiscard}
+        onPublish={onPublish}
+        pageName={pageName}
+        projectName={projectName}
+      />
 
       {selectedImageField && mode === "edit" && (
-        <aside
-          ref={imageCardRef}
-          className={`imageCard${isDragging ? " dragging" : ""}`}
-          aria-label={`Edit ${imageTitle} image`}
-        >
-          <div className="imageCardHead">
-            <div className="imageCardMeta">
-              <span className="imageCardEyebrow">Image</span>
-              <span className="imageCardTitle">{imageTitle}</span>
-            </div>
-            <button className="railClose" onClick={closeImageCard} aria-label="Close">
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12" /></svg>
-            </button>
-          </div>
-
-          <button
-            type="button"
-            className={`imageDrop${isDragging ? " drag" : ""}${isUploading ? " uploading" : ""}`}
-            onClick={onChooseImage}
-            onDragOver={onImageDragOver}
-            onDragLeave={onImageDragLeave}
-            onDrop={onImageDrop}
-            aria-label="Replace image — click to choose a file, or drop one here"
-          >
-            {imagePreviewSrc ? (
-              <img src={imagePreviewSrc} alt="" />
-            ) : (
-              <span className="imageDropEmpty">No image yet</span>
-            )}
-            <span className="imageDropHint">
-              {isUploading ? (
-                <><span className="spinner" aria-hidden="true" />Uploading…</>
-              ) : (
-                "Drop an image, or click to replace"
-              )}
-            </span>
-          </button>
-
-          {imageError ? (
-            <p className="imageError" role="alert">{imageError}</p>
-          ) : (
-            <p className={`imageStatus${imageIsDraft ? " draft" : ""}`} aria-live="polite">
-              <span className="dot" />
-              {isUploading
-                ? "Saving…"
-                : imageIsDraft
-                  ? "Draft — not published yet"
-                  : "Published — live on your site"}
-            </p>
-          )}
-
-          <div className="imageCardActions">
-            <button className="barBtn primary" onClick={onChooseImage} disabled={isUploading}>
-              {isUploading ? "Uploading…" : "Replace image"}
-            </button>
-          </div>
-
-          <input
-            ref={imageInputRef}
-            className="fileInput"
-            type="file"
-            accept="image/*"
-            onChange={onImageFileChange}
-          />
-        </aside>
+        <ImagePanel
+          cardRef={imageCardRef}
+          imageError={imageError}
+          imageIsDraft={imageIsDraft}
+          imagePreviewSrc={imagePreviewSrc}
+          imageTitle={imageTitle}
+          inputRef={imageInputRef}
+          isDragging={isDragging}
+          isUploading={isUploading}
+          onChooseImage={onChooseImage}
+          onClose={closeImageCard}
+          onDragLeave={onImageDragLeave}
+          onDragOver={onImageDragOver}
+          onDrop={onImageDrop}
+          onFileChange={onImageFileChange}
+        />
       )}
 
       {selectedRecord && mode === "edit" && (
@@ -1178,14 +689,7 @@ function CmsEditor({ projectSlug }) {
         />
       )}
 
-      {/* Toast + first-run hint */}
-      <div className={`toast${toast ? " show" : ""}`} role="status">
-        <span className="check">✓</span>
-        <span>{toast}</span>
-      </div>
-      <div className={`hint${hint ? " show" : ""}`}>
-        Click any text to edit · <span className="key">esc</span> to finish
-      </div>
+      <EditorUx hint={hint} toast={toast} />
     </div>
   );
 }

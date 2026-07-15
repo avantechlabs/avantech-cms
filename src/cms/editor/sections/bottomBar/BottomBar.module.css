@@ -1,0 +1,135 @@
+.bottomBar {
+  position: fixed;
+  left: calc(50% + var(--shell-inset, 0px) / 2);
+  bottom: var(--s-5);
+  transform: translateX(-50%);
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  gap: var(--s-4);
+  padding: 8px 8px 8px 18px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-pill);
+  box-shadow: var(--shadow-xl);
+  transition: opacity var(--dur-panel) var(--ease), transform var(--dur-panel) var(--ease-soft);
+}
+
+:global(html[data-mode="view"]) .bottomBar {
+  opacity: 0;
+  pointer-events: none;
+  transform: translateX(-50%) translateY(20px);
+}
+
+.status {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  font-size: 13px;
+  color: var(--text-2);
+  white-space: nowrap;
+}
+
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--gold);
+  box-shadow: 0 0 0 4px var(--gold-ring);
+  animation: cms-pulse 2.4s var(--ease) infinite;
+}
+
+.unpublished { color: var(--draft-ink); font-weight: 500; }
+
+@keyframes cms-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+.sep { width: 1px; height: 20px; background: var(--line); }
+
+.barBtn {
+  border: 0;
+  background: none;
+  cursor: pointer;
+  color: var(--text-2);
+  font-size: 13px;
+  font-weight: 500;
+  padding: 8px 14px;
+  border-radius: var(--r-pill);
+  transition: color var(--dur-fast) var(--ease), background var(--dur-fast) var(--ease), opacity var(--dur-fast) var(--ease);
+}
+
+.barBtn:hover { color: var(--text); background: var(--surface-2); }
+.barBtn:disabled { opacity: 0.4; cursor: default; }
+.barBtn:disabled:hover { background: none; color: var(--text-2); }
+
+.primary {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  background: var(--gold);
+  color: #1A1916;
+  font-weight: 600;
+  padding: 8px 18px;
+}
+
+.primary:hover { background: var(--gold-press); color: #1A1916; }
+.primary:disabled { background: var(--surface-3); color: var(--text-dim); }
+
+.confirming {
+  border-color: var(--line-strong);
+  animation: confirmSwap var(--dur-base) var(--ease) both;
+}
+
+.confirming .status { color: var(--text); }
+
+.dangerBtn {
+  color: var(--danger);
+  font-weight: 600;
+}
+
+.dangerBtn:hover { color: var(--danger); background: var(--draft-tint); }
+
+@keyframes confirmSwap {
+  from { opacity: 0.6; transform: translateX(-50%) translateY(4px); }
+  to { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .confirming { animation: none; }
+}
+
+.badge {
+  display: inline-grid;
+  place-items: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: var(--r-pill);
+  background: rgba(26, 25, 22, 0.16);
+  color: #1A1916;
+  font-family: var(--font-meta);
+  font-size: 11px;
+}
+
+.barBtn:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 2px;
+}
+
+@media (max-width: 720px) {
+  .bottomBar {
+    left: var(--s-3);
+    right: var(--s-3);
+    transform: none;
+    justify-content: space-between;
+    gap: var(--s-2);
+    padding-left: var(--s-3);
+  }
+
+  :global(html[data-mode="view"]) .bottomBar { transform: translateY(20px); }
+
+  /* The centering transform baked into confirmSwap doesn't apply at this width. */
+  .confirming { animation: none; }
+}

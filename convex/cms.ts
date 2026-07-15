@@ -26,6 +26,7 @@ export {
 export {
   createCollectionItemDraft,
   generateCollectionFileUploadUrl,
+  listCollections,
   listPreviewCollectionItems,
   listPublishedCollectionItems,
   saveCollectionItemDraft,
