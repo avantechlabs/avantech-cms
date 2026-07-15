@@ -3,6 +3,12 @@ import { useMutation } from "convex/react";
 import { api } from "../../convex/_generated/api.js";
 
 type SaveState = "idle" | "saving" | "saved" | "publishing" | "published";
+type DiscoveredField = { id: string; value: string };
+type SeedDiscoveredFieldsArgs = {
+  projectSlug?: string;
+  pageSlug?: string;
+  fields: DiscoveredField[];
+};
 
 export function useFieldManager(
   projectSlug: string,
@@ -15,11 +21,20 @@ export function useFieldManager(
   // commit-then-publish can never act on stale draft state.
   const pendingSaveRef = useRef<Promise<unknown>>(Promise.resolve());
 
-  const seedDiscoveredFields = useMutation(api.cms.seedDiscoveredFields);
+  const seedDiscoveredFieldsMutation = useMutation(api.cms.seedDiscoveredFields);
   const generateImageUploadUrl = useMutation(api.cms.generateImageUploadUrl);
   const saveDraft = useMutation(api.cms.saveDraft);
   const publishSite = useMutation(api.cms.publishSite);
   const discardSiteDrafts = useMutation(api.cms.discardSiteDrafts);
+
+  function seedDiscoveredFields(args: SeedDiscoveredFieldsArgs) {
+    return seedDiscoveredFieldsMutation({
+      projectSlug,
+      pageSlug,
+      language,
+      fields: args.fields,
+    });
+  }
 
   function saveDraftField(fieldId: string, value: string) {
     setSaveState("saving");

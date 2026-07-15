@@ -16,7 +16,7 @@ vi.mock("convex/react", () => ({
       return {
         slug: args.slug,
         name: "Project A",
-        origin: "https://site.test",
+        origin: "https://site.test/",
         editUrl: "https://site.test",
       };
     }
@@ -60,5 +60,6 @@ test("loads page state for the selected editor language", () => {
     language: "en",
   });
   expect(result.pageLanguage).toBe("en");
+  expect(result.previewOrigin).toBe("https://site.test");
   expect(result.siteUrl).toContain("cmsLanguage=en");
 });

@@ -2,6 +2,15 @@ import { useMemo } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api.js";
 
+function normalizeOrigin(value: string | undefined) {
+  if (!value) return "";
+  try {
+    return new URL(value).origin;
+  } catch {
+    return value.replace(/\/+$/, "");
+  }
+}
+
 export function useCmsProject(
   projectSlug: string,
   pageSlug: string,
@@ -41,7 +50,7 @@ export function useCmsProject(
     [page],
   );
 
-  const previewOrigin = project?.origin ?? "";
+  const previewOrigin = normalizeOrigin(project?.origin);
 
   const siteUrl = useMemo(() => {
     if (!project) return "";

@@ -49,6 +49,43 @@ test("saves page draft fields for the selected editor language", async () => {
   });
 });
 
+test("seeds discovered fields for the selected editor language", async () => {
+  function Consumer() {
+    const { seedDiscoveredFields } = useFieldManager("project-a", "home", "en");
+    return (
+      <button
+        type="button"
+        onClick={() =>
+          seedDiscoveredFields({
+            projectSlug: "project-a",
+            pageSlug: "home",
+            fields: [{ id: "button.cta", value: "Contact us" }],
+          })
+        }
+      >
+        Seed
+      </button>
+    );
+  }
+
+  await act(async () => {
+    createRoot(document.body.appendChild(document.createElement("div"))).render(
+      <Consumer />,
+    );
+  });
+
+  await act(async () => {
+    document.querySelector("button").click();
+  });
+
+  expect(mutationState.calls).toContainEqual({
+    projectSlug: "project-a",
+    pageSlug: "home",
+    language: "en",
+    fields: [{ id: "button.cta", value: "Contact us" }],
+  });
+});
+
 test("publishes and discards page drafts for the selected editor language", async () => {
   function Consumer() {
     const { publish, discard } = useFieldManager("project-a", "home", "en");
