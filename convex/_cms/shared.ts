@@ -3,7 +3,7 @@ import type { QueryCtx, MutationCtx } from "../_generated/server";
 import type { Doc, Id } from "../_generated/dataModel";
 
 export const HOME_PAGE_SLUG = "home";
-export const DEFAULT_LANGUAGE = "fr";
+export const DEFAULT_LANGUAGE = "en";
 export const STORAGE_REFERENCE_PREFIX = "convex-storage:";
 
 export const SEEDED_PROJECTS = [

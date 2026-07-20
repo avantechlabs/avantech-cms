@@ -14,7 +14,7 @@ function normalizeOrigin(value: string | undefined) {
 export function useCmsProject(
   projectSlug: string,
   pageSlug: string,
-  language = "fr",
+  language = "en",
 ) {
   const ensureSeedData = useMutation(api.cms.ensureSeedData);
   const projects = useQuery(api.cms.listProjects) ?? [];

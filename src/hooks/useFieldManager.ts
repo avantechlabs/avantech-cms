@@ -13,7 +13,7 @@ type SeedDiscoveredFieldsArgs = {
 export function useFieldManager(
   projectSlug: string,
   pageSlug: string,
-  language = "fr",
+  language = "en",
 ) {
   const [saveState, setSaveState] = useState<SaveState>("idle");
   const seededSignatureRef = useRef("");

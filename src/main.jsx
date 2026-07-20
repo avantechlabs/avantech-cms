@@ -188,7 +188,7 @@ function CmsEditor({ projectSlug }) {
   const [selectedPageSlug, setSelectedPageSlug] = useState(
     () => new URLSearchParams(window.location.search).get("page") || "home",
   );
-  const [selectedLanguage, setSelectedLanguage] = useState("fr");
+  const [selectedLanguage, setSelectedLanguage] = useState("en");
 
   const {
     projects,

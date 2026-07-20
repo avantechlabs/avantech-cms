@@ -55,7 +55,7 @@ export function useEditBridge() {
   }, []);
 }
 
-export function useCmsPage(projectSlug, pageSlug, language = "fr") {
+export function useCmsPage(projectSlug, pageSlug, language = "en") {
   const publishedFields = useQuery(PUBLISHED_CONTENT_QUERY, {
     projectSlug,
     pageSlug,
@@ -81,7 +81,7 @@ export function useCmsPage(projectSlug, pageSlug, language = "fr") {
   return publishedFields ?? {};
 }
 
-export function useCmsCollection(projectSlug, collectionKey, language = "fr") {
+export function useCmsCollection(projectSlug, collectionKey, language = "en") {
   return useQuery(PUBLISHED_COLLECTION_QUERY, {
     projectSlug,
     collectionKey,
@@ -92,7 +92,7 @@ export function useCmsCollection(projectSlug, collectionKey, language = "fr") {
 export function CmsContentProvider({
   projectSlug,
   pageSlug,
-  language = "fr",
+  language = "en",
   mode = "public",
   children,
 }) {

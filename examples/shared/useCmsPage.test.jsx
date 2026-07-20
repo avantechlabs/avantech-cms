@@ -208,7 +208,7 @@ test("useCmsCollection reads published records through a public string query", (
   ]);
   expect(queryState.calls).toContainEqual({
     query: "cms:listPublishedCollectionItems",
-    args: { projectSlug: "project-a", collectionKey: "projects", language: "fr" },
+    args: { projectSlug: "project-a", collectionKey: "projects", language: "en" },
   });
 });
 
@@ -250,10 +250,10 @@ test("useCmsCollection keeps iframe collection reads public in edit mode", () =>
   ]);
   expect(queryState.calls).toContainEqual({
     query: "cms:listPublishedCollectionItems",
-    args: { projectSlug: "project-a", collectionKey: "projects", language: "fr" },
+    args: { projectSlug: "project-a", collectionKey: "projects", language: "en" },
   });
   expect(queryState.calls).not.toContainEqual({
     query: "cms:listPreviewCollectionItems",
-    args: { projectSlug: "project-a", collectionKey: "projects", language: "fr" },
+    args: { projectSlug: "project-a", collectionKey: "projects", language: "en" },
   });
 });

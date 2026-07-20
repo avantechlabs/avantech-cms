@@ -70,7 +70,7 @@ The public site does **not** need:
 Use string public function references from external sites:
 
 ```ts
-useQuery("cms:getPublishedContent", { projectSlug, pageSlug, language: "fr" });
+useQuery("cms:getPublishedContent", { projectSlug, pageSlug, language: "en" });
 ```
 
 Do not import generated backend files from the CMS repo into an external public
@@ -213,7 +213,7 @@ import { ConvexProvider, ConvexReactClient, useQuery } from "convex/react";
 
 const PROJECT_SLUG = "servir-avec-compassion";
 const PAGE_SLUG = "home";
-const LANGUAGE = "fr";
+const LANGUAGE = "en";
 const convexClient = new ConvexReactClient(import.meta.env.VITE_CONVEX_URL);
 
 function CmsRuntime({ children }) {
@@ -649,7 +649,7 @@ data-cms-record="<collectionKey>:<recordSlug>"
 
 ## Language Handling
 
-The current editor is language-aware. The default editor language is `fr`, and
+The current editor is language-aware. The default editor language is `en`, and
 the backend currently accepts `fr` and `en`.
 
 Page content can be read in two modes:
@@ -669,11 +669,11 @@ For new integrations, pass a stable language into public content and collection
 queries:
 
 ```ts
-useQuery("cms:getPublishedContent", { projectSlug, pageSlug, language: "fr" });
+useQuery("cms:getPublishedContent", { projectSlug, pageSlug, language: "en" });
 useQuery("cms:listPublishedCollectionItems", {
   projectSlug,
   collectionKey,
-  language: "fr",
+  language: "en",
 });
 ```
 
@@ -684,7 +684,7 @@ a `cms:language-changed` event when the editor language changes:
 import { useEffect, useState } from "react";
 
 function getCmsLanguage() {
-  return new URLSearchParams(location.search).get("cmsLanguage") || "fr";
+  return new URLSearchParams(location.search).get("cmsLanguage") || "en";
 }
 
 function useCmsLanguage() {
@@ -692,7 +692,7 @@ function useCmsLanguage() {
 
   useEffect(() => {
     function onLanguageChanged(event) {
-      setLanguage(event.detail.language || "fr");
+      setLanguage(event.detail.language || "en");
     }
     window.addEventListener("cms:language-changed", onLanguageChanged);
     return () =>
