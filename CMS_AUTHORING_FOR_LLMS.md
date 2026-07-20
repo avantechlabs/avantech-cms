@@ -19,18 +19,21 @@ Convex owns:
 ```text
 pageContent.publishedFields[fieldId] -> string
 pageContent.draftFields[fieldId] -> string
+pageContent.publishedFieldsByLanguage[language][fieldId] -> string
+pageContent.draftFieldsByLanguage[language][fieldId] -> string
 collectionItems.publishedData / draftData
+collectionItems.publishedDataByLanguage / draftDataByLanguage
 ```
 
 ## Current Shape
 
 The current CMS has three pieces:
 
-1. **Admin project row** in the CMS.
+1. **Project row** in the CMS.
 2. **Website integration** in the public site.
 3. **Editor bridge** loaded only when the CMS opens the site in edit mode.
 
-The admin row tells the CMS where to load the site:
+The project row tells the CMS where to load the site:
 
 ```ts
 {
@@ -41,8 +44,8 @@ The admin row tells the CMS where to load the site:
 }
 ```
 
-The website tells the CMS what pages and fields exist. Do not create website pages in
-the CMS admin. Pages are code-owned.
+The website tells the CMS what pages and fields exist. Do not create website
+pages manually in the CMS. Pages are code-owned and synced from the site.
 
 ## Requirements
 
@@ -53,7 +56,7 @@ The public site needs:
 - `convex` package.
 - `VITE_CONVEX_URL` pointing to the CMS Convex deployment.
 - `/bridge.js` served by the website.
-- A project slug matching the CMS admin project row.
+- A project slug matching the CMS project row.
 - Page declarations with stable `slug`, `title`, and `path`.
 - Stable `data-cms-field` attributes on editable DOM leaves.
 
@@ -67,7 +70,7 @@ The public site does **not** need:
 Use string public function references from external sites:
 
 ```ts
-useQuery("cms:getPublishedContent", { projectSlug, pageSlug });
+useQuery("cms:getPublishedContent", { projectSlug, pageSlug, language: "fr" });
 ```
 
 Do not import generated backend files from the CMS repo into an external public
@@ -94,10 +97,14 @@ point at the same Convex deployment for the environment being tested.
 Before editing a site, create or update its project row in:
 
 ```text
-/admin/projects
+/cms/new/settings
+/cms/<projectSlug>/settings
 ```
 
-For local testing:
+Use `/cms/new/settings` for a new site. Use `/cms/<projectSlug>/settings` to
+edit an existing site's name, origin, edit URL, and members.
+
+For local testing with a target website running on port `3004`:
 
 ```ts
 {
@@ -155,7 +162,7 @@ function useEditBridge() {
 The CMS will open the site with:
 
 ```text
-?edit=1&parent=<cms-origin>
+?edit=1&parent=<cms-origin>&cmsLanguage=<language>
 ```
 
 ## Page Registry
@@ -206,6 +213,7 @@ import { ConvexProvider, ConvexReactClient, useQuery } from "convex/react";
 
 const PROJECT_SLUG = "servir-avec-compassion";
 const PAGE_SLUG = "home";
+const LANGUAGE = "fr";
 const convexClient = new ConvexReactClient(import.meta.env.VITE_CONVEX_URL);
 
 function CmsRuntime({ children }) {
@@ -213,7 +221,11 @@ function CmsRuntime({ children }) {
 
   return (
     <CmsPagesProvider pages={[{ slug: PAGE_SLUG, title: "Home", path: "/" }]}>
-      <CmsContentProvider projectSlug={PROJECT_SLUG} pageSlug={PAGE_SLUG}>
+      <CmsContentProvider
+        projectSlug={PROJECT_SLUG}
+        pageSlug={PAGE_SLUG}
+        language={LANGUAGE}
+      >
         {children}
       </CmsContentProvider>
     </CmsPagesProvider>
@@ -243,6 +255,7 @@ In public mode, the site reads published fields:
 const publishedFields = useQuery("cms:getPublishedContent", {
   projectSlug,
   pageSlug,
+  language,
 });
 ```
 
@@ -528,12 +541,21 @@ Supported field types in the current editor:
 ```text
 text
 paragraph
+textarea
+longText
 select
+multiSelect
 boolean
 number
+url
+email
+date
+datetime
+color
 image
 file
 object
+group
 list
 ```
 
@@ -542,6 +564,10 @@ may contain line breaks. The editor stores `paragraph` values as plain strings
 with `\n`, so the website must render them with paragraph-aware CSS such as
 `white-space: pre-line` or an equivalent component. `longText` is accepted as a
 legacy alias, but new sites should use `paragraph`.
+
+`textarea` is also accepted as a multiline alias. `group` is accepted as an
+object-like alias. New sites should prefer `paragraph` and `object` unless they
+are matching an existing collection definition.
 
 For nested objects:
 
@@ -623,14 +649,67 @@ data-cms-record="<collectionKey>:<recordSlug>"
 
 ## Language Handling
 
-The current CMS stores one value per `projectSlug + pageSlug + fieldId`.
+The current editor is language-aware. The default editor language is `fr`, and
+the backend currently accepts `fr` and `en`.
 
-For multilingual sites, choose one v1 policy:
+Page content can be read in two modes:
+
+1. **Legacy/unscoped mode**: omit `language`, and Convex reads
+   `publishedFields` / `draftFields`.
+2. **Language-scoped mode**: pass `language`, and Convex reads the matching
+   `publishedFieldsByLanguage[language]` / `draftFieldsByLanguage[language]`.
+   Published reads also fall back to unscoped `publishedFields` when a
+   language-specific value is missing.
+
+Collection reads follow the same pattern with
+`publishedDataByLanguage` / `draftDataByLanguage`, falling back to unscoped
+published data where appropriate.
+
+For new integrations, pass a stable language into public content and collection
+queries:
+
+```ts
+useQuery("cms:getPublishedContent", { projectSlug, pageSlug, language: "fr" });
+useQuery("cms:listPublishedCollectionItems", {
+  projectSlug,
+  collectionKey,
+  language: "fr",
+});
+```
+
+The CMS iframe URL includes `cmsLanguage=<language>`, and the bridge also emits
+a `cms:language-changed` event when the editor language changes:
+
+```ts
+import { useEffect, useState } from "react";
+
+function getCmsLanguage() {
+  return new URLSearchParams(location.search).get("cmsLanguage") || "fr";
+}
+
+function useCmsLanguage() {
+  const [language, setLanguage] = useState(getCmsLanguage);
+
+  useEffect(() => {
+    function onLanguageChanged(event) {
+      setLanguage(event.detail.language || "fr");
+    }
+    window.addEventListener("cms:language-changed", onLanguageChanged);
+    return () =>
+      window.removeEventListener("cms:language-changed", onLanguageChanged);
+  }, []);
+
+  return language;
+}
+```
+
+For multilingual sites, choose one policy:
 
 1. **Single authoring language**: force the site language while editing, usually
    French for a French-first site.
-2. **Language-scoped field IDs**: include language in the field ID, such as
-   `fr.hero.title` and `en.hero.title`.
+2. **CMS language switcher**: read `cmsLanguage`, listen for
+   `cms:language-changed`, and pass the selected language into
+   `CmsContentProvider`, `useCmsPage`, and `useCmsCollection`.
 
 Do not let browser language detection randomly decide what gets seeded in
 production. That can seed English fields into a French-first project or the
@@ -639,9 +718,10 @@ reverse.
 ## Local End-to-End Test
 
 1. Run CMS dev server.
-2. Run target website dev server.
-3. Create/update project row in `/admin/projects`.
-4. Open `/cms/<projectSlug>`.
+2. Run the target website dev server.
+3. Create/update the project row in `/cms/new/settings` or
+   `/cms/<projectSlug>/settings`.
+4. Open `http://localhost:51730/cms/<projectSlug>`.
 5. Confirm the iframe loads.
 6. Confirm the site reports pages.
 7. Click a text field and edit it.
@@ -649,7 +729,8 @@ reverse.
 9. Open the public site without `?edit=1`.
 10. Confirm the published value renders.
 
-Example local project row:
+Example local project row for a custom target website running locally on port
+`3004`:
 
 ```ts
 {
@@ -663,8 +744,22 @@ Example local project row:
 Example editor URL:
 
 ```text
-http://localhost:3002/cms/servir-avec-compassion
+http://localhost:51730/cms/servir-avec-compassion
 ```
+
+The included demo websites use these local ports only when you run them from
+this repo:
+
+```text
+CMS: http://localhost:51730/cms
+site-demo: http://localhost:51731
+sable-demo: http://localhost:51732
+```
+
+External or client websites do not need to use these ports. For those, set
+`origin` and `editUrl` to the actual website origin for the environment you are
+testing: a local dev server for local testing, or the deployed production URL
+for production editing.
 
 ## Vercel End-to-End Test
 
@@ -674,7 +769,8 @@ For a deployed website:
 2. Deploy the website to Vercel.
 3. Set the website `VITE_CONVEX_URL` to the CMS Convex deployment.
 4. Ensure the website serves `/bridge.js`.
-5. Add the production project row in CMS admin.
+5. Add the production project row in `/cms/new/settings` with the deployed
+   website origin and edit URL.
 6. Open `/cms/<projectSlug>` in the CMS deployment.
 7. Confirm the Vercel site iframe loads.
 8. Edit and publish a field.
@@ -696,19 +792,20 @@ Production project row:
 1. Install `convex` in the website.
 2. Add `VITE_CONVEX_URL`.
 3. Copy `packages/cms-bridge/bridge.js` to `public/bridge.js`.
-4. Add a project slug matching the CMS admin row.
+4. Add a project slug matching the CMS project row.
 5. Add page declarations.
 6. Register pages with `window.__AVANTECH_CMS_PAGES__`.
 7. Wrap the app with `ConvexProvider`.
 8. Load the edit bridge only when `?edit=1`.
-9. Read `cms:getPublishedContent` with a string function reference.
+9. Read `cms:getPublishedContent` with a string function reference and a stable
+   `language`.
 10. Mark editable text leaves with `data-cms-field`.
 11. Mark editable images on the `img` element.
 12. Preserve links, routes, IDs, icons, and behavior in code.
 13. If collections are needed, declare collection definitions.
 14. If collections are needed, register them with `CmsCollectionsProvider`.
 15. If collections are needed, render record roots with `data-cms-record`.
-16. Register the project in `/admin/projects`.
+16. Register the project in `/cms/new/settings`.
 17. Open the project through `/cms/<projectSlug>`.
 18. Confirm pages and fields seed.
 19. Confirm collection definitions/records appear when applicable.
@@ -723,5 +820,5 @@ Production project row:
 - Letting browser language detection seed the wrong language.
 - Changing field IDs after content has been published.
 - Registering Vercel preview URLs as the canonical production project.
-- Trying to create pages from the CMS admin.
+- Trying to create pages manually in the CMS.
 - Storing `href` or route behavior in CMS text fields.
