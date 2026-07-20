@@ -718,7 +718,7 @@ reverse.
 ## Local End-to-End Test
 
 1. Run CMS dev server.
-2. Run the target website dev server.
+2. Run target website dev server.
 3. Create/update the project row in `/cms/new/settings` or
    `/cms/<projectSlug>/settings`.
 4. Open `http://localhost:51730/cms/<projectSlug>`.
@@ -729,8 +729,7 @@ reverse.
 9. Open the public site without `?edit=1`.
 10. Confirm the published value renders.
 
-Example local project row for a custom target website running locally on port
-`3004`:
+Example local project row for a custom target website on port `3004`:
 
 ```ts
 {
@@ -747,19 +746,13 @@ Example editor URL:
 http://localhost:51730/cms/servir-avec-compassion
 ```
 
-The included demo websites use these local ports only when you run them from
-this repo:
+The included examples use these ports:
 
 ```text
 CMS: http://localhost:51730/cms
 site-demo: http://localhost:51731
 sable-demo: http://localhost:51732
-```
-
-External or client websites do not need to use these ports. For those, set
-`origin` and `editUrl` to the actual website origin for the environment you are
-testing: a local dev server for local testing, or the deployed production URL
-for production editing.
+``k`
 
 ## Vercel End-to-End Test
 
@@ -769,8 +762,7 @@ For a deployed website:
 2. Deploy the website to Vercel.
 3. Set the website `VITE_CONVEX_URL` to the CMS Convex deployment.
 4. Ensure the website serves `/bridge.js`.
-5. Add the production project row in `/cms/new/settings` with the deployed
-   website origin and edit URL.
+5. Add the production project row in `/cms/new/settings`.
 6. Open `/cms/<projectSlug>` in the CMS deployment.
 7. Confirm the Vercel site iframe loads.
 8. Edit and publish a field.
