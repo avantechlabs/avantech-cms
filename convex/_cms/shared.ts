@@ -71,6 +71,7 @@ export const SEEDED_COLLECTIONS: Record<
 };
 
 export const fieldsValidator = v.record(v.string(), v.string());
+// optional language validator: 'fr' or 'en'
 export const languageValidator = v.optional(
   v.union(v.literal("fr"), v.literal("en")),
 );
@@ -191,6 +192,8 @@ export function setAtPath(
   const keys = path.split(".").filter(Boolean);
   if (keys.length === 0)
     throw new Error("Collection draft path must not be empty.");
+  if (keys.length === 0)
+    throw new Error("Collection draft path must not be empty.");
 
   const root: Record<string, unknown> = isRecord(source) ? { ...source } : {};
   let cursor = root;
@@ -309,7 +312,7 @@ export function previewCollectionData(
   );
 }
 
-export function hasMeaningfulCollectionDraft(
+export function hasCollectionDraftChanges(
   item: Doc<"collectionItems">,
   language: string | undefined,
 ) {

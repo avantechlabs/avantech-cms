@@ -8,7 +8,7 @@ import {
   fieldsForLanguage,
   getContentForPage,
   getProject,
-  hasMeaningfulCollectionDraft,
+  hasCollectionDraftChanges,
   languageOrDefault,
   languageValidator,
   listPagesForProject,
@@ -77,7 +77,7 @@ export const getSiteDraftState = query({
     const collectionLanguage =
       args.language === undefined ? undefined : languageOrDefault(args.language);
     const collectionDrafts = collectionItems
-      .filter((item) => hasMeaningfulCollectionDraft(item, collectionLanguage))
+      .filter((item) => hasCollectionDraftChanges(item, collectionLanguage))
       .map((item) => ({
         collectionKey: item.collectionKey,
         slug: item.slug,
