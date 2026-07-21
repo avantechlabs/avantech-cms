@@ -84,6 +84,49 @@ test("CmsImage keeps the fallback src available for edit-mode discovery", () => 
   expect(html).toContain('src="/fallback-hero.jpg"');
 });
 
+test("CmsImage renders declared picture slots from published fields", () => {
+  queryState.result = {
+    "hero.image.desktop": "/published-desktop.webp",
+    "hero.image.mobile": "/published-mobile.webp",
+  };
+
+  const html = renderWithCms(
+    <CmsImage
+      fieldId="hero.image"
+      sources={[
+        {
+          slot: "desktop",
+          media: "(min-width:1201px)",
+          type: "image/webp",
+          default: "/default-desktop.webp",
+        },
+        {
+          slot: "mobile",
+          type: "image/webp",
+          default: "/default-mobile.webp",
+        },
+      ]}
+      fallbackImg={{
+        slot: "mobile",
+        default: "/default-mobile.png",
+        width: 941,
+        height: 1264,
+      }}
+      alt="Hero"
+    />,
+  );
+
+  expect(html).toContain("<picture>");
+  expect(html).toContain('data-cms-field="hero.image"');
+  expect(html).toContain('data-cms-slot="desktop"');
+  expect(html).toContain('srcSet="/published-desktop.webp"');
+  expect(html).toContain('data-cms-slot="mobile"');
+  expect(html).toContain('srcSet="/published-mobile.webp"');
+  expect(html).toContain('src="/published-mobile.webp"');
+  expect(html).not.toContain("/default-desktop.webp");
+  expect(html).not.toContain("/default-mobile.png");
+});
+
 test("CmsContentProvider reads published fields for the selected language", () => {
   renderToStaticMarkup(
     <CmsContentProvider projectSlug="project-a" pageSlug="home" language="en">

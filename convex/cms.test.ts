@@ -735,6 +735,93 @@ test("image upload flow saves a canonical draft while public output stays publis
   expect(previewFields["hero.image"]).toBe(draftUrl);
 });
 
+test("global image slot drafts preview and publish with the selected editor language", async () => {
+  const t = convexTest(schema, modules);
+  await asAdmin(t).mutation(api.cms.ensureSeedData);
+
+  const desktopStorageId = await storeImage(t, "desktop image");
+  const mobileStorageId = await storeImage(t, "mobile image");
+  const desktopCanonicalValue = `convex-storage:${desktopStorageId}`;
+  const mobileCanonicalValue = `convex-storage:${mobileStorageId}`;
+
+  await asAdmin(t).mutation(api.cms.saveDraft, {
+    projectSlug,
+    pageSlug,
+    fields: {
+      "hero.image.desktop": desktopCanonicalValue,
+      "hero.image.mobile": mobileCanonicalValue,
+    },
+  });
+
+  const desktopUrl = await t.run(async (ctx) => {
+    return await ctx.storage.getUrl(desktopStorageId);
+  });
+  const mobileUrl = await t.run(async (ctx) => {
+    return await ctx.storage.getUrl(mobileStorageId);
+  });
+
+  const englishPreview = await asAdmin(t).query(api.cms.getPreviewContent, {
+    projectSlug,
+    pageSlug,
+    language: "en",
+  });
+  const frenchPage = await asAdmin(t).query(api.cms.getPage, {
+    projectSlug,
+    pageSlug,
+    language: "fr",
+  });
+  const draftState = await asAdmin(t).query(api.cms.getSiteDraftState, {
+    projectSlug,
+    pageSlug,
+    language: "en",
+  });
+
+  expect(englishPreview["hero.image.desktop"]).toBe(desktopUrl);
+  expect(englishPreview["hero.image.mobile"]).toBe(mobileUrl);
+  expect(frenchPage?.draftFields["hero.image.desktop"]).toBe(desktopUrl);
+  expect(frenchPage?.draftFields["hero.image.mobile"]).toBe(mobileUrl);
+  expect(draftState.pageDraftFieldIds).toEqual([
+    "hero.image.desktop",
+    "hero.image.mobile",
+  ]);
+
+  await asAdmin(t).mutation(api.cms.publishSite, {
+    projectSlug,
+    language: "en",
+  });
+
+  const englishPublished = await t.query(api.cms.getPublishedContent, {
+    projectSlug,
+    pageSlug,
+    language: "en",
+  });
+  const frenchPublished = await t.query(api.cms.getPublishedContent, {
+    projectSlug,
+    pageSlug,
+    language: "fr",
+  });
+  const storedContent = await getStoredPageContent(t);
+  const publishedDraftState = await asAdmin(t).query(api.cms.getSiteDraftState, {
+    projectSlug,
+    pageSlug,
+    language: "fr",
+  });
+
+  expect(englishPublished["hero.image.desktop"]).toBe(desktopUrl);
+  expect(englishPublished["hero.image.mobile"]).toBe(mobileUrl);
+  expect(frenchPublished["hero.image.desktop"]).toBe(desktopUrl);
+  expect(frenchPublished["hero.image.mobile"]).toBe(mobileUrl);
+  expect(storedContent.publishedFields["hero.image.desktop"]).toBe(
+    desktopCanonicalValue,
+  );
+  expect(storedContent.publishedFields["hero.image.mobile"]).toBe(
+    mobileCanonicalValue,
+  );
+  expect(storedContent.draftFields).not.toHaveProperty("hero.image.desktop");
+  expect(storedContent.draftFields).not.toHaveProperty("hero.image.mobile");
+  expect(publishedDraftState.pageDraftFieldIds).toEqual([]);
+});
+
 test("image draft uploads are isolated by project slug and page slug", async () => {
   const t = convexTest(schema, modules);
   await asAdmin(t).mutation(api.cms.ensureSeedData);

@@ -226,15 +226,16 @@ function CmsEditor({ projectSlug }) {
   );
   const [selectedField, setSelectedField] = useState(null);
   const [selectedRecord, setSelectedRecord] = useState(null);
-  const [pendingPreview, setPendingPreview] = useState(null); // { fieldId, url }
-  const [isUploading, setIsUploading] = useState(false);
-  const [isDragging, setIsDragging] = useState(false);
-  const [imageError, setImageError] = useState(null);
+  const [pendingPreviews, setPendingPreviews] = useState({}); // fieldId -> object URL
+  const [uploadingSlots, setUploadingSlots] = useState({});
+  const [draggingSlots, setDraggingSlots] = useState({});
+  const [imageErrors, setImageErrors] = useState({});
   const fieldsByIdRef = useRef(new Map());
   const imageInputRef = useRef(null);
   const imageCardRef = useRef(null);
-  const pendingUrlRef = useRef(null); // latest object URL, for cleanup
-  const uploadSeqRef = useRef(0); // ignore a superseded upload's UI effects
+  const pendingUrlsRef = useRef(new Map()); // fieldId -> object URL, for cleanup
+  const uploadSeqRef = useRef(new Map()); // fieldId -> latest sequence
+  const activeImageSlotRef = useRef(null);
   const toastTimer = useRef(null);
   const hintTimer = useRef(null);
 
@@ -286,13 +287,31 @@ function CmsEditor({ projectSlug }) {
       );
 
       const editable = nextFields.filter((f) => f.editable !== false);
-      const signature = editable.map((f) => f.id).sort().join("|");
+      const signature = editable
+        .flatMap((field) => (
+          field.kind === "image" && Array.isArray(field.slots) && field.slots.length
+            ? field.slots.map((slot) => slot.fieldId)
+            : [field.id]
+        ))
+        .sort()
+        .join("|");
       if (canSyncStructure && signature && signature !== seededSignatureRef.current) {
         seededSignatureRef.current = signature;
+        const fieldsToSeed = editable.flatMap((field) => {
+          if (field.kind !== "image") return [{ id: field.id, value: field.value }];
+          const slots = Array.isArray(field.slots) && field.slots.length
+            ? field.slots
+            : [{ fieldId: field.id, value: field.value }];
+          return slots.map((slot) => ({
+            id: slot.fieldId,
+            value: slot.value,
+            global: true,
+          }));
+        });
         seedDiscoveredFields({
           projectSlug,
           pageSlug: selectedPageSlug,
-          fields: editable.map((f) => ({ id: f.id, value: f.value })),
+          fields: fieldsToSeed,
         }).then((seeded) => {
           if (seeded) send({ type: "cms:apply-fields", fields: seeded });
         });
@@ -423,59 +442,78 @@ function CmsEditor({ projectSlug }) {
     });
   }
 
-  function revokePendingUrl() {
-    if (pendingUrlRef.current) {
-      URL.revokeObjectURL(pendingUrlRef.current);
-      pendingUrlRef.current = null;
+  function revokePendingUrl(fieldId = null) {
+    if (fieldId) {
+      const url = pendingUrlsRef.current.get(fieldId);
+      if (url) URL.revokeObjectURL(url);
+      pendingUrlsRef.current.delete(fieldId);
+      return;
     }
+    for (const url of pendingUrlsRef.current.values()) {
+      URL.revokeObjectURL(url);
+    }
+    pendingUrlsRef.current.clear();
   }
 
-  function onChooseImage() {
+  function onChooseImage(fieldId) {
+    activeImageSlotRef.current = fieldId;
     imageInputRef.current?.click();
   }
 
   function onImageFileChange(event) {
     const file = event.target.files?.[0];
     event.target.value = "";
-    if (file) handleImageFile(file);
+    if (file && activeImageSlotRef.current) {
+      handleImageFile(activeImageSlotRef.current, file);
+    }
   }
 
-  function handleImageFile(file) {
+  function handleImageFile(fieldId, file) {
     const field = selectedField?.kind === "image" ? selectedField : null;
     if (!field) return;
 
-    setImageError(null);
+    setImageErrors((current) => ({ ...current, [fieldId]: null }));
     if (!file.type.startsWith("image/")) {
-      setImageError("That file isn’t an image.");
+      setImageErrors((current) => ({ ...current, [fieldId]: "That file isn’t an image." }));
       return;
     }
     if (file.size > MAX_IMAGE_BYTES) {
-      setImageError("That image is over 10 MB — try a smaller one.");
+      setImageErrors((current) => ({
+        ...current,
+        [fieldId]: "That image is over 10 MB — try a smaller one.",
+      }));
       return;
     }
 
-    const fieldId = field.id;
-    const seq = ++uploadSeqRef.current;
-    revokePendingUrl();
+    const seq = (uploadSeqRef.current.get(fieldId) ?? 0) + 1;
+    uploadSeqRef.current.set(fieldId, seq);
+    revokePendingUrl(fieldId);
     const previewUrl = URL.createObjectURL(file);
-    pendingUrlRef.current = previewUrl;
-    setPendingPreview({ fieldId, url: previewUrl });
-    setIsUploading(true);
+    pendingUrlsRef.current.set(fieldId, previewUrl);
+    setPendingPreviews((current) => ({ ...current, [fieldId]: previewUrl }));
+    setUploadingSlots((current) => ({ ...current, [fieldId]: true }));
     // Optimistic: the framed site shows the picked image instantly.
     send({ type: "cms:update-field", fieldId, value: previewUrl });
 
     uploadImageDraft(fieldId, file)
       .then(() => {
-        if (seq !== uploadSeqRef.current) return; // a newer pick superseded this
-        setIsUploading(false);
+        if (seq !== uploadSeqRef.current.get(fieldId)) return; // a newer pick superseded this
+        setUploadingSlots((current) => ({ ...current, [fieldId]: false }));
         showToast("Image saved as draft");
       })
       .catch((error) => {
-        if (seq !== uploadSeqRef.current) return;
-        setIsUploading(false);
-        setImageError("Upload failed — please try again.");
-        revokePendingUrl();
-        setPendingPreview(null);
+        if (seq !== uploadSeqRef.current.get(fieldId)) return;
+        setUploadingSlots((current) => ({ ...current, [fieldId]: false }));
+        setImageErrors((current) => ({
+          ...current,
+          [fieldId]: "Upload failed — please try again.",
+        }));
+        revokePendingUrl(fieldId);
+        setPendingPreviews((current) => {
+          const next = { ...current };
+          delete next[fieldId];
+          return next;
+        });
         if (previewFields[fieldId]) {
           send({ type: "cms:update-field", fieldId, value: previewFields[fieldId] });
         }
@@ -483,28 +521,29 @@ function CmsEditor({ projectSlug }) {
       });
   }
 
-  function onImageDragOver(event) {
+  function onImageDragOver(fieldId, event) {
     event.preventDefault();
-    setIsDragging(true);
+    setDraggingSlots((current) => ({ ...current, [fieldId]: true }));
   }
-  function onImageDragLeave(event) {
+  function onImageDragLeave(fieldId, event) {
     event.preventDefault();
-    setIsDragging(false);
+    setDraggingSlots((current) => ({ ...current, [fieldId]: false }));
   }
-  function onImageDrop(event) {
+  function onImageDrop(fieldId, event) {
     event.preventDefault();
-    setIsDragging(false);
+    setDraggingSlots((current) => ({ ...current, [fieldId]: false }));
     const file = event.dataTransfer?.files?.[0];
-    if (file) handleImageFile(file);
+    if (file) handleImageFile(fieldId, file);
   }
 
   function closeImageCard() {
     revokePendingUrl();
-    setPendingPreview(null);
+    setPendingPreviews({});
     setSelectedField(null);
-    setImageError(null);
-    setIsDragging(false);
-    setIsUploading(false);
+    setImageErrors({});
+    setDraggingSlots({});
+    setUploadingSlots({});
+    activeImageSlotRef.current = null;
   }
 
   const projectName = project?.name || projectSlug;
@@ -528,13 +567,25 @@ function CmsEditor({ projectSlug }) {
     : false;
   const imageFieldId = selectedImageField?.id ?? null;
   const imageTitle = imageFieldId ? imageFieldTitle(imageFieldId) : "";
-  const imageIsDraft = imageFieldId ? draftFieldIds.includes(imageFieldId) : false;
-  const imagePreviewSrc = imageFieldId
-    ? (pendingPreview?.fieldId === imageFieldId ? pendingPreview.url : null) ||
-      previewFields[imageFieldId] ||
-      selectedImageField.value ||
-      null
-    : null;
+  const selectedImageSlots = selectedImageField
+    ? (
+        Array.isArray(selectedImageField.slots) && selectedImageField.slots.length
+          ? selectedImageField.slots
+          : [{ name: "image", fieldId: selectedImageField.id, value: selectedImageField.value }]
+      ).map((slot) => ({
+        id: slot.fieldId,
+        title: imageFieldTitle(slot.name ?? slot.fieldId),
+        previewSrc:
+          pendingPreviews[slot.fieldId] ||
+          previewFields[slot.fieldId] ||
+          slot.value ||
+          null,
+        isDraft: draftFieldIds.includes(slot.fieldId),
+        isDragging: draggingSlots[slot.fieldId] === true,
+        isUploading: uploadingSlots[slot.fieldId] === true,
+        error: imageErrors[slot.fieldId] ?? null,
+      }))
+    : [];
 
   // Image card is non-modal: Esc and clicks outside it dismiss. Clicks inside
   // the framed site arrive as field messages, so this only covers parent chrome.
@@ -587,13 +638,9 @@ function CmsEditor({ projectSlug }) {
       {selectedImageField && mode === "edit" && (
         <ImagePanel
           cardRef={imageCardRef}
-          imageError={imageError}
-          imageIsDraft={imageIsDraft}
-          imagePreviewSrc={imagePreviewSrc}
           imageTitle={imageTitle}
           inputRef={imageInputRef}
-          isDragging={isDragging}
-          isUploading={isUploading}
+          slots={selectedImageSlots}
           onChooseImage={onChooseImage}
           onClose={closeImageCard}
           onDragLeave={onImageDragLeave}

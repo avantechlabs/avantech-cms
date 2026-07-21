@@ -21,6 +21,11 @@ export type FieldData = {
   kind?: "image" | "text" | "paragraph";
   value: string;
   editable?: boolean;
+  slots?: {
+    name: string;
+    fieldId: string;
+    value: string;
+  }[];
   rect: { left: number; top: number; width: number; height: number };
 };
 

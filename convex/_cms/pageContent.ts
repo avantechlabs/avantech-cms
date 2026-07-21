@@ -188,7 +188,10 @@ export const getPage = query({
     const draftFields =
       args.language === undefined
         ? result.content?.draftFields ?? {}
-        : fieldsForLanguage(result.content?.draftFieldsByLanguage, language);
+        : {
+            ...(result.content?.draftFields ?? {}),
+            ...fieldsForLanguage(result.content?.draftFieldsByLanguage, language),
+          };
     const publishedFields =
       args.language === undefined
         ? result.content?.publishedFields ?? {}
@@ -260,7 +263,10 @@ export const getPreviewContent = query({
     const draftFields =
       args.language === undefined
         ? result.content.draftFields
-        : fieldsForLanguage(result.content.draftFieldsByLanguage, language);
+        : {
+            ...result.content.draftFields,
+            ...fieldsForLanguage(result.content.draftFieldsByLanguage, language),
+          };
 
     return await resolveStorageFieldMap(ctx, {
       ...publishedFields,
@@ -410,7 +416,10 @@ export const publishPage = mutation({
     const draftFields =
       args.language === undefined
         ? result.content?.draftFields ?? {}
-        : fieldsForLanguage(result.content?.draftFieldsByLanguage, language);
+        : {
+            ...(result.content?.draftFields ?? {}),
+            ...fieldsForLanguage(result.content?.draftFieldsByLanguage, language),
+          };
     const existingPublishedFields =
       args.language === undefined
         ? result.content?.publishedFields ?? {}
@@ -424,7 +433,22 @@ export const publishPage = mutation({
         publishedAt: Date.now(),
       });
     } else {
+      const globalDraftFields = result.content?.draftFields ?? {};
+      const languageDraftFields = fieldsForLanguage(
+        result.content?.draftFieldsByLanguage,
+        language,
+      );
+      const publishedGlobalFields = {
+        ...(result.content?.publishedFields ?? {}),
+        ...globalDraftFields,
+      };
+      const publishedLanguageFields = {
+        ...existingPublishedFields,
+        ...languageDraftFields,
+      };
       await upsertPageContent(ctx, result.project._id, result.page._id, result.content, {
+        draftFields: {},
+        publishedFields: publishedGlobalFields,
         draftFieldsByLanguage: setFieldsForLanguage(
           result.content?.draftFieldsByLanguage,
           language,
@@ -433,7 +457,7 @@ export const publishPage = mutation({
         publishedFieldsByLanguage: setFieldsForLanguage(
           result.content?.publishedFieldsByLanguage,
           language,
-          publishedFields,
+          publishedLanguageFields,
         ),
         publishedAt: Date.now(),
       });

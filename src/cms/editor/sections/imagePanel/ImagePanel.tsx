@@ -3,41 +3,43 @@ import styles from "./ImagePanel.module.css";
 
 type ImagePanelProps = {
   cardRef: RefObject<HTMLElement | null>;
-  imageError: string | null;
-  imageIsDraft: boolean;
-  imagePreviewSrc: string | null;
   imageTitle: string;
   inputRef: RefObject<HTMLInputElement | null>;
+  slots: ImageSlot[];
+  onChooseImage: (slotId: string) => void;
+  onClose: () => void;
+  onDragLeave: (slotId: string, event: DragEvent<HTMLButtonElement>) => void;
+  onDragOver: (slotId: string, event: DragEvent<HTMLButtonElement>) => void;
+  onDrop: (slotId: string, event: DragEvent<HTMLButtonElement>) => void;
+  onFileChange: (event: ChangeEvent<HTMLInputElement>) => void;
+};
+
+type ImageSlot = {
+  id: string;
+  title: string;
+  error: string | null;
+  isDraft: boolean;
   isDragging: boolean;
   isUploading: boolean;
-  onChooseImage: () => void;
-  onClose: () => void;
-  onDragLeave: (event: DragEvent<HTMLButtonElement>) => void;
-  onDragOver: (event: DragEvent<HTMLButtonElement>) => void;
-  onDrop: (event: DragEvent<HTMLButtonElement>) => void;
-  onFileChange: (event: ChangeEvent<HTMLInputElement>) => void;
+  previewSrc: string | null;
 };
 
 export function ImagePanel({
   cardRef,
-  imageError,
-  imageIsDraft,
-  imagePreviewSrc,
   imageTitle,
   inputRef,
-  isDragging,
-  isUploading,
   onChooseImage,
   onClose,
   onDragLeave,
   onDragOver,
   onDrop,
   onFileChange,
+  slots,
 }: ImagePanelProps) {
   return (
     <aside
       ref={cardRef}
-      className={`${styles.imageCard}${isDragging ? ` ${styles.dragging}` : ""}`}
+      className={styles.imageCard}
       aria-label={`Edit ${imageTitle} image`}
     >
       <div className={styles.imageCardHead}>
@@ -52,46 +54,66 @@ export function ImagePanel({
         </button>
       </div>
 
-      <button
-        type="button"
-        className={`${styles.imageDrop}${isDragging ? ` ${styles.drag}` : ""}${isUploading ? ` ${styles.uploading}` : ""}`}
-        onClick={onChooseImage}
-        onDragOver={onDragOver}
-        onDragLeave={onDragLeave}
-        onDrop={onDrop}
-        aria-label="Replace image — click to choose a file, or drop one here"
-      >
-        {imagePreviewSrc ? (
-          <img src={imagePreviewSrc} alt="" />
-        ) : (
-          <span className={styles.imageDropEmpty}>No image yet</span>
-        )}
-        <span className={styles.imageDropHint}>
-          {isUploading ? (
-            <><span className={styles.spinner} aria-hidden="true" />Uploading…</>
-          ) : (
-            "Drop an image, or click to replace"
-          )}
-        </span>
-      </button>
+      <div className={styles.imageSlots}>
+        {slots.map((slot) => (
+          <section className={styles.imageSlot} key={slot.id} aria-label={`${slot.title} image slot`}>
+            <div className={styles.imageSlotHead}>
+              <span className={styles.imageSlotTitle}>{slot.title}</span>
+              {slot.error ? null : (
+                <span
+                  className={`${styles.imageSlotStatus}${slot.isDraft ? ` ${styles.draft}` : ""}`}
+                  aria-live="polite"
+                >
+                  <span className={styles.dot} />
+                  {slot.isUploading
+                    ? "Saving…"
+                    : slot.isDraft
+                      ? "Draft — not published yet"
+                      : "Published — live on your site"}
+                </span>
+              )}
+            </div>
 
-      {imageError ? (
-        <p className={styles.imageError} role="alert">{imageError}</p>
-      ) : (
-        <p className={`${styles.imageStatus}${imageIsDraft ? ` ${styles.draft}` : ""}`} aria-live="polite">
-          <span className={styles.dot} />
-          {isUploading
-            ? "Saving…"
-            : imageIsDraft
-              ? "Draft — not published yet"
-              : "Published — live on your site"}
-        </p>
-      )}
+            <button
+              type="button"
+              className={`${styles.imageDrop}${slot.isDragging ? ` ${styles.drag}` : ""}${slot.isUploading ? ` ${styles.uploading}` : ""}`}
+              onClick={() => onChooseImage(slot.id)}
+              onDragOver={(event) => onDragOver(slot.id, event)}
+              onDragLeave={(event) => onDragLeave(slot.id, event)}
+              onDrop={(event) => onDrop(slot.id, event)}
+              aria-label={`Replace ${slot.title} image`}
+            >
+              {slot.previewSrc ? (
+                <img src={slot.previewSrc} alt="" />
+              ) : (
+                <span className={styles.imageDropEmpty}>No image yet</span>
+              )}
+              <span className={styles.imageDropHint}>
+                {slot.isUploading ? (
+                  <><span className={styles.spinner} aria-hidden="true" />Uploading…</>
+                ) : (
+                  "Drop an image, or click to replace"
+                )}
+              </span>
+            </button>
 
-      <div className={styles.imageCardActions}>
-        <button className={styles.replaceButton} onClick={onChooseImage} disabled={isUploading} type="button">
-          {isUploading ? "Uploading…" : "Replace image"}
-        </button>
+            {slot.error ? (
+              <p className={styles.imageError} role="alert">{slot.error}</p>
+            ) : null}
+
+            <div className={styles.imageCardActions}>
+              <button
+                className={styles.replaceButton}
+                onClick={() => onChooseImage(slot.id)}
+                disabled={slot.isUploading}
+                type="button"
+                aria-label={`Replace ${slot.title} image`}
+              >
+                {slot.isUploading ? "Uploading…" : "Replace image"}
+              </button>
+            </div>
+          </section>
+        ))}
       </div>
 
       <input

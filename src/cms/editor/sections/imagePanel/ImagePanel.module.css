@@ -60,6 +60,41 @@
 
 .closeButton:hover { color: var(--text); background: var(--surface-2); }
 
+.imageSlots {
+  display: grid;
+  gap: var(--s-4);
+}
+
+.imageSlot {
+  display: grid;
+  gap: var(--s-2);
+}
+
+.imageSlotHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-2);
+}
+
+.imageSlotTitle {
+  font-size: 12px;
+  font-weight: 650;
+  color: var(--text);
+}
+
+.imageSlotStatus {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  min-width: 0;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.imageSlotStatus.draft { color: var(--draft-ink); font-weight: 500; }
+.imageSlotStatus.draft .dot { background: var(--draft); }
+
 .imageDrop {
   position: relative;
   display: grid;

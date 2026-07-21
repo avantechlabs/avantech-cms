@@ -3,7 +3,7 @@ import { useMutation } from "convex/react";
 import { api } from "../../convex/_generated/api.js";
 
 type SaveState = "idle" | "saving" | "saved" | "publishing" | "published";
-type DiscoveredField = { id: string; value: string };
+type DiscoveredField = { id: string; value: string; global?: boolean };
 type SeedDiscoveredFieldsArgs = {
   projectSlug?: string;
   pageSlug?: string;
@@ -27,13 +27,36 @@ export function useFieldManager(
   const publishSite = useMutation(api.cms.publishSite);
   const discardSiteDrafts = useMutation(api.cms.discardSiteDrafts);
 
-  function seedDiscoveredFields(args: SeedDiscoveredFieldsArgs) {
-    return seedDiscoveredFieldsMutation({
-      projectSlug,
-      pageSlug,
-      language,
-      fields: args.fields,
-    });
+  async function seedDiscoveredFields(args: SeedDiscoveredFieldsArgs) {
+    const globalFields = args.fields
+      .filter((field) => field.global)
+      .map(({ id, value }) => ({ id, value }));
+    const languageFields = args.fields
+      .filter((field) => !field.global)
+      .map(({ id, value }) => ({ id, value }));
+
+    const [languageSeeded, globalSeeded] = await Promise.all([
+      languageFields.length
+        ? seedDiscoveredFieldsMutation({
+            projectSlug,
+            pageSlug,
+            language,
+            fields: languageFields,
+          })
+        : Promise.resolve(null),
+      globalFields.length
+        ? seedDiscoveredFieldsMutation({
+            projectSlug,
+            pageSlug,
+            fields: globalFields,
+          })
+        : Promise.resolve(null),
+    ]);
+
+    return {
+      ...(languageSeeded ?? {}),
+      ...(globalSeeded ?? {}),
+    };
   }
 
   function saveDraftField(fieldId: string, value: string) {
@@ -71,7 +94,6 @@ export function useFieldManager(
         await saveDraft({
           projectSlug,
           pageSlug,
-          language,
           fields: { [fieldId]: canonicalValue },
         });
         setSaveState("saved");

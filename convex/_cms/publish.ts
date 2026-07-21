@@ -46,7 +46,10 @@ export const getSiteDraftState = query({
       const draftFields =
         args.language === undefined
           ? content?.draftFields ?? {}
-          : fieldsForLanguage(content?.draftFieldsByLanguage, language);
+          : {
+              ...(content?.draftFields ?? {}),
+              ...fieldsForLanguage(content?.draftFieldsByLanguage, language),
+            };
       const publishedFields =
         args.language === undefined
           ? content?.publishedFields ?? {}
@@ -126,12 +129,19 @@ export const publishSite = mutation({
           publishedAt: now,
         });
       } else {
-        const draftFields = fieldsForLanguage(content?.draftFieldsByLanguage, language);
-        const publishedFields = {
+        const globalDraftFields = content?.draftFields ?? {};
+        const languageDraftFields = fieldsForLanguage(content?.draftFieldsByLanguage, language);
+        const publishedGlobalFields = {
+          ...(content?.publishedFields ?? {}),
+          ...globalDraftFields,
+        };
+        const publishedLanguageFields = {
           ...fieldsForLanguage(content?.publishedFieldsByLanguage, language),
-          ...draftFields,
+          ...languageDraftFields,
         };
         await upsertPageContent(ctx, project._id, page._id, content, {
+          draftFields: {},
+          publishedFields: publishedGlobalFields,
           draftFieldsByLanguage: setFieldsForLanguage(
             content?.draftFieldsByLanguage,
             language,
@@ -140,7 +150,7 @@ export const publishSite = mutation({
           publishedFieldsByLanguage: setFieldsForLanguage(
             content?.publishedFieldsByLanguage,
             language,
-            publishedFields,
+            publishedLanguageFields,
           ),
           publishedAt: now,
         });
@@ -208,6 +218,7 @@ export const discardSiteDrafts = mutation({
         });
       } else {
         await upsertPageContent(ctx, project._id, page._id, content, {
+          draftFields: {},
           draftFieldsByLanguage: setFieldsForLanguage(
             content.draftFieldsByLanguage,
             language,

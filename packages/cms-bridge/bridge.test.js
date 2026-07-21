@@ -325,3 +325,88 @@ test("bridge applies image field values to src and text field values to textCont
     "Published title",
   );
 });
+
+test("bridge reports and updates image slot groups through the image field", () => {
+  document.body.innerHTML = `
+    <picture>
+      <source
+        data-cms-slot="desktop"
+        data-cms-slot-field="hero.image.desktop"
+        media="(min-width:1201px)"
+        type="image/webp"
+        srcset="/images/static-desktop.webp"
+      >
+      <source
+        data-cms-slot="mobile"
+        data-cms-slot-field="hero.image.mobile"
+        type="image/webp"
+        srcset="/images/static-mobile.webp"
+      >
+      <img
+        data-cms-field="hero.image"
+        data-cms-slot="mobile"
+        data-cms-slot-field="hero.image.mobile"
+        src="/images/static-mobile.png"
+        alt=""
+      >
+    </picture>
+  `;
+  installBridge();
+
+  const fieldsMessage = postedMessages
+    .filter(({ message }) => message.type === "cms:fields")
+    .at(-1);
+  expect(fieldsMessage.message.fields).toEqual([
+    expect.objectContaining({
+      id: "hero.image",
+      kind: "image",
+      value: "/images/static-mobile.png",
+      editable: true,
+      slots: [
+        {
+          name: "desktop",
+          fieldId: "hero.image.desktop",
+          value: "/images/static-desktop.webp",
+        },
+        {
+          name: "mobile",
+          fieldId: "hero.image.mobile",
+          value: "/images/static-mobile.png",
+        },
+      ],
+    }),
+  ]);
+
+  window.dispatchEvent(
+    new MessageEvent("message", {
+      origin: parentOrigin,
+      data: {
+        type: "cms:apply-fields",
+        fields: {
+          "hero.image.desktop": "/images/published-desktop.webp",
+          "hero.image.mobile": "/images/published-mobile.webp",
+        },
+      },
+    }),
+  );
+
+  expect(document.querySelector('[data-cms-slot="desktop"]').getAttribute("srcset")).toBe(
+    "/images/published-desktop.webp",
+  );
+  expect(document.querySelector('[data-cms-field="hero.image"]').getAttribute("src")).toBe(
+    "/images/published-mobile.webp",
+  );
+
+  document
+    .querySelector('[data-cms-slot="desktop"]')
+    .dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+
+  expect(postedMessages).toContainEqual({
+    origin: parentOrigin,
+    message: {
+      type: "cms:field-clicked",
+      fieldId: "hero.image",
+      kind: "image",
+    },
+  });
+});

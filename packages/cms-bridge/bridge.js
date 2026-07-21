@@ -125,6 +125,33 @@
     const el = document.querySelector('[data-cms-field="' + escaped + '"]');
     return el && isLeaf(el) ? el : null;
   }
+  function slotTargets(fieldId) {
+    const escaped = window.CSS && CSS.escape ? CSS.escape(fieldId) : fieldId;
+    return [...document.querySelectorAll('[data-cms-slot-field="' + escaped + '"]')];
+  }
+  function slotValue(el) {
+    if (el instanceof HTMLSourceElement) return el.getAttribute("srcset") || "";
+    if (el instanceof HTMLImageElement) return el.getAttribute("src") || el.currentSrc || el.src;
+    return "";
+  }
+  function imageSlots(el) {
+    if (!isImageField(el)) return undefined;
+    const picture = el.closest("picture");
+    if (!picture) return undefined;
+    const slots = new Map();
+    for (const target of picture.querySelectorAll("[data-cms-slot][data-cms-slot-field]")) {
+      slots.set(target.dataset.cmsSlot, {
+        name: target.dataset.cmsSlot,
+        fieldId: target.dataset.cmsSlotField,
+        value: slotValue(target),
+      });
+    }
+    return slots.size ? [...slots.values()] : undefined;
+  }
+  function owningSlotField(el) {
+    const picture = el.closest?.("picture");
+    return picture?.querySelector?.("img[data-cms-field]") || null;
+  }
   function markLeaves() {
     for (const el of leafFields()) el.classList.add("cms-leaf");
   }
@@ -146,13 +173,16 @@
   // ── Discovery ───────────────────────────────────────────────────────────
   function fieldFromElement(el) {
     const r = el.getBoundingClientRect();
-    return {
+    const field = {
       id: el.dataset.cmsField,
       kind: fieldKind(el),
       value: fieldValue(el),
       editable: isLeaf(el),
       rect: { left: r.left, top: r.top, width: r.width, height: r.height },
     };
+    const slots = imageSlots(el);
+    if (slots) field.slots = slots;
+    return field;
   }
   function parseRecordId(value) {
     const [collectionKey, ...slugParts] = String(value || "").split(":");
@@ -205,7 +235,17 @@
   }
   function applyField(fieldId, value) {
     const el = getLeaf(fieldId);
-    if (!el || el === activeEl) return;
+    if (!el) {
+      for (const target of slotTargets(fieldId)) {
+        if (target instanceof HTMLSourceElement) {
+          target.srcset = value;
+        } else if (target instanceof HTMLImageElement && target !== activeEl) {
+          target.src = value;
+        }
+      }
+      return;
+    }
+    if (el === activeEl) return;
     if (isImageField(el)) {
       el.src = value;
     } else {
@@ -264,7 +304,7 @@
   // ── Events ──────────────────────────────────────────────────────────────
   document.addEventListener("mouseover", (event) => {
     if (!editMode || activeEl) return;
-    const field = event.target.closest(FIELD_SELECTOR);
+    const field = event.target.closest(FIELD_SELECTOR) || owningSlotField(event.target);
     if (!field || !isLeaf(field)) {
       if (hoverEl) {
         hoverEl.classList.remove("cms-hover");
@@ -299,7 +339,7 @@
         return;
       }
 
-      const field = event.target.closest(FIELD_SELECTOR);
+      const field = event.target.closest(FIELD_SELECTOR) || owningSlotField(event.target);
       if (editMode && field && isLeaf(field)) {
         event.preventDefault();
         event.stopPropagation();
@@ -398,7 +438,11 @@
       case "cms:set-drafts": {
         const drafts = new Set(message.fieldIds || []);
         for (const el of leafFields()) {
-          el.classList.toggle("cms-draft", drafts.has(el.dataset.cmsField));
+          const slots = imageSlots(el) || [];
+          el.classList.toggle(
+            "cms-draft",
+            drafts.has(el.dataset.cmsField) || slots.some((slot) => drafts.has(slot.fieldId)),
+          );
         }
         break;
       }

@@ -183,13 +183,51 @@ export function CmsText({ fieldId, children }) {
 
 export function CmsImage({ fieldId, src, alt = "", ...props }) {
   const cms = useContext(CmsContentContext);
+  const { sources, fallbackImg, ...imgProps } = props;
+
+  if (Array.isArray(sources) && fallbackImg) {
+    const slotValue = (slot, defaultValue) => {
+      if (!cms || isEditMode() || !cms.isLoaded) return defaultValue;
+      return cms.fields?.[`${fieldId}.${slot}`] ?? defaultValue;
+    };
+    const fallbackSrc = slotValue(fallbackImg.slot, fallbackImg.default);
+
+    return (
+      <picture>
+        {sources.map((source, index) => {
+          const slotFieldId = `${fieldId}.${source.slot}`;
+          return (
+            <source
+              key={`${slotFieldId}.${index}`}
+              data-cms-slot={source.slot}
+              data-cms-slot-field={slotFieldId}
+              media={source.media}
+              type={source.type}
+              srcSet={slotValue(source.slot, source.default)}
+            />
+          );
+        })}
+        <img
+          {...imgProps}
+          alt={alt}
+          data-cms-field={fieldId}
+          data-cms-slot={fallbackImg.slot}
+          data-cms-slot-field={`${fieldId}.${fallbackImg.slot}`}
+          src={fallbackSrc}
+          width={fallbackImg.width}
+          height={fallbackImg.height}
+        />
+      </picture>
+    );
+  }
+
   const renderedSrc = !cms || isEditMode() || !cms.isLoaded
     ? src
     : getFieldValue(cms, fieldId);
 
   return (
     <img
-      {...props}
+      {...imgProps}
       alt={alt}
       data-cms-field={fieldId}
       src={renderedSrc}
