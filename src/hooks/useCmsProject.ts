@@ -2,13 +2,68 @@ import { useMemo } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api.js";
 
-function normalizeOrigin(value: string | undefined) {
-  if (!value) return "";
-  try {
-    return new URL(value).origin;
-  } catch {
-    return value.replace(/\/+$/, "");
+type PreviewTarget = {
+  previewOrigin: string;
+  siteUrl: string;
+  previewError: string | null;
+};
+
+export function buildPreviewTarget({
+  projectSiteUrl,
+  pagePath,
+  pageSlug,
+  language,
+  cmsOrigin,
+}: {
+  projectSiteUrl: string | undefined;
+  pagePath: string | undefined;
+  pageSlug: string;
+  language: string;
+  cmsOrigin: string;
+}): PreviewTarget {
+  const trimmedSiteUrl = projectSiteUrl?.trim();
+  if (!trimmedSiteUrl) {
+    return { previewOrigin: "", siteUrl: "", previewError: null };
   }
+
+  let url: URL;
+  try {
+    url = new URL(trimmedSiteUrl, cmsOrigin);
+  } catch {
+    return {
+      previewOrigin: "",
+      siteUrl: "",
+      previewError: "Enter a valid site URL in settings.",
+    };
+  }
+
+  if (url.origin === cmsOrigin) {
+    return {
+      previewOrigin: "",
+      siteUrl: "",
+      previewError: "Site URL points to the CMS. Set it to the public site URL in settings.",
+    };
+  }
+
+  const resolvedPagePath = pagePath ?? (pageSlug === "home" ? "/" : `/${pageSlug}`);
+  url.pathname = resolvedPagePath.startsWith("/") ? resolvedPagePath : `/${resolvedPagePath}`;
+  url.searchParams.set("edit", "1");
+  url.searchParams.set("parent", cmsOrigin);
+  url.searchParams.set("cmsLanguage", language);
+
+  return {
+    previewOrigin: url.origin,
+    siteUrl: url.toString(),
+    previewError: null,
+  };
+}
+
+export function projectSiteUrl(project: {
+  siteUrl?: string;
+  editUrl?: string;
+  origin?: string;
+} | null | undefined) {
+  return project?.siteUrl ?? project?.editUrl ?? project?.origin ?? "";
 }
 
 export function useCmsProject(
@@ -50,18 +105,17 @@ export function useCmsProject(
     [page],
   );
 
-  const previewOrigin = normalizeOrigin(project?.origin);
-
-  const siteUrl = useMemo(() => {
-    if (!project) return "";
-    const pagePath = page?.page?.path ?? (pageSlug === "home" ? "/" : `/${pageSlug}`);
-    const url = new URL(project.editUrl, window.location.origin);
-    url.pathname = pagePath.startsWith("/") ? pagePath : `/${pagePath}`;
-    url.searchParams.set("edit", "1");
-    url.searchParams.set("parent", window.location.origin);
-    url.searchParams.set("cmsLanguage", language);
-    return url.toString();
-  }, [language, page?.page?.path, pageSlug, project]);
+  const previewTarget = useMemo(
+    () =>
+      buildPreviewTarget({
+        projectSiteUrl: projectSiteUrl(project),
+        pagePath: page?.page?.path,
+        pageSlug,
+        language,
+        cmsOrigin: window.location.origin,
+      }),
+    [language, page?.page?.path, pageSlug, project],
+  );
 
   return {
     projects,
@@ -74,8 +128,9 @@ export function useCmsProject(
     draftFieldIds,
     siteDraftCount: siteDraftState?.totalDraftCount ?? draftFieldIds.length,
     collectionDrafts: siteDraftState?.collectionDrafts ?? [],
-    previewOrigin,
-    siteUrl,
+    previewOrigin: previewTarget.previewOrigin,
+    siteUrl: previewTarget.siteUrl,
+    previewError: previewTarget.previewError,
     ensureSeedData,
   };
 }

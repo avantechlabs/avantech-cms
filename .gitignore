@@ -6,3 +6,4 @@ dist/
 .vercel
 CMS_AUTHORING_FOR_LLMS.md
 CONTEXT.md
+tmp/

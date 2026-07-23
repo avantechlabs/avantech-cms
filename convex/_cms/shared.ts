@@ -6,16 +6,26 @@ export const HOME_PAGE_SLUG = "home";
 export const DEFAULT_LANGUAGE = "en";
 export const STORAGE_REFERENCE_PREFIX = "convex-storage:";
 
-export const SEEDED_PROJECTS = [
+type SeededProject = {
+  slug: string;
+  name: string;
+  siteUrl: string;
+  origin: string;
+  editUrl: string;
+};
+
+export const SEEDED_PROJECTS: SeededProject[] = [
   {
     slug: "project-a",
     name: "Avantech",
+    siteUrl: "http://localhost:51731",
     origin: "http://localhost:51731",
     editUrl: "http://localhost:51731",
   },
   {
     slug: "project-b",
     name: "Sable",
+    siteUrl: "http://localhost:51732",
     origin: "http://localhost:51732",
     editUrl: "http://localhost:51732",
   },

@@ -1,5 +1,5 @@
 {
-  "buildCommand": "pnpm run build",
+  "buildCommand": "pnpm test && pnpm run build",
   "outputDirectory": "dist",
   "rewrites": [
     {

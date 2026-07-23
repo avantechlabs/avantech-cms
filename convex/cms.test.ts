@@ -72,10 +72,8 @@ test("seeded demo project URLs match local example dev ports", async () => {
     slug: "project-b",
   });
 
-  expect(projectA?.origin).toBe("http://localhost:51731");
-  expect(projectA?.editUrl).toBe("http://localhost:51731");
-  expect(projectB?.origin).toBe("http://localhost:51732");
-  expect(projectB?.editUrl).toBe("http://localhost:51732");
+  expect(projectA?.siteUrl).toBe("http://localhost:51731");
+  expect(projectB?.siteUrl).toBe("http://localhost:51732");
 });
 
 test("admin email controls access to the CMS project list", async () => {
@@ -446,8 +444,7 @@ test("admin can create a project with editable home content shell", async () => 
   const project = await asAdmin(t).mutation(api.cms.createProject, {
     slug: "sable-cloud",
     name: "Sable Cloud",
-    origin: "https://sable.example.com",
-    editUrl: "https://sable.example.com",
+    siteUrl: "https://sable.example.com",
   });
 
   expect(project?.slug).toBe("sable-cloud");
@@ -473,21 +470,43 @@ test("admin can update project connection URLs without changing the slug", async
   await asAdmin(t).mutation(api.cms.createProject, {
     slug: "sable-cloud",
     name: "Sable Cloud",
-    origin: "https://old.example.com",
-    editUrl: "https://old.example.com",
+    siteUrl: "https://old.example.com",
   });
 
   const updated = await asAdmin(t).mutation(api.cms.updateProject, {
     slug: "sable-cloud",
     name: "Sable",
-    origin: "https://sable.example.com",
-    editUrl: "https://edit.sable.example.com",
+    siteUrl: "https://sable.example.com",
   });
 
   expect(updated?.slug).toBe("sable-cloud");
   expect(updated?.name).toBe("Sable");
-  expect(updated?.origin).toBe("https://sable.example.com");
-  expect(updated?.editUrl).toBe("https://edit.sable.example.com");
+  expect(updated?.siteUrl).toBe("https://sable.example.com");
+});
+
+test("project URL mutations accept legacy origin and editUrl payloads during migration", async () => {
+  const t = convexTest(schema, modules);
+  const created = await asAdmin(t).mutation(api.cms.createProject, {
+    slug: "legacy-site",
+    name: "Legacy Site",
+    origin: "https://legacy.example.com",
+    editUrl: "https://legacy.example.com",
+  });
+
+  expect(created?.siteUrl).toBe("https://legacy.example.com");
+  expect(created?.origin).toBe("https://legacy.example.com");
+  expect(created?.editUrl).toBe("https://legacy.example.com");
+
+  const updated = await asAdmin(t).mutation(api.cms.updateProject, {
+    slug: "legacy-site",
+    name: "Legacy Site Updated",
+    origin: "https://legacy-updated.example.com",
+    editUrl: "https://legacy-updated.example.com",
+  });
+
+  expect(updated?.siteUrl).toBe("https://legacy-updated.example.com");
+  expect(updated?.origin).toBe("https://legacy-updated.example.com");
+  expect(updated?.editUrl).toBe("https://legacy-updated.example.com");
 });
 
 test("site owners cannot create or update site records", async () => {
@@ -503,16 +522,14 @@ test("site owners cannot create or update site records", async () => {
     owner.mutation(api.cms.createProject, {
       slug: "owner-site",
       name: "Owner Site",
-      origin: "https://owner.example.com",
-      editUrl: "https://owner.example.com",
+      siteUrl: "https://owner.example.com",
     }),
   ).rejects.toThrow("Unauthorized");
   await expect(
     owner.mutation(api.cms.updateProject, {
       slug: "project-a",
       name: "Owner Renamed",
-      origin: "https://owner.example.com",
-      editUrl: "https://owner.example.com",
+      siteUrl: "https://owner.example.com",
     }),
   ).rejects.toThrow("Unauthorized");
 });

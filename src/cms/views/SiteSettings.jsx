@@ -20,8 +20,7 @@ export function SiteSettings({ project }) {
   const [draft, setDraft] = useState({
     slug: project?.slug ?? "",
     name: project?.name ?? "",
-    origin: project?.origin ?? "",
-    editUrl: project?.editUrl ?? "",
+    siteUrl: project?.siteUrl ?? project?.editUrl ?? project?.origin ?? "",
   });
   const [saveState, setSaveState] = useState("idle");
   const [ownerEmail, setOwnerEmail] = useState("");
@@ -42,8 +41,7 @@ export function SiteSettings({ project }) {
   const canSave =
     draft.slug.trim() &&
     draft.name.trim() &&
-    draft.origin.trim() &&
-    draft.editUrl.trim() &&
+    draft.siteUrl.trim() &&
     saveState !== "saving";
 
   function updateDraft(key, value) {
@@ -57,8 +55,9 @@ export function SiteSettings({ project }) {
     const payload = {
       slug: project ? project.slug : normalizeSlug(draft.slug),
       name: draft.name.trim(),
-      origin: draft.origin.trim(),
-      editUrl: draft.editUrl.trim(),
+      siteUrl: draft.siteUrl.trim(),
+      origin: draft.siteUrl.trim(),
+      editUrl: draft.siteUrl.trim(),
     };
 
     setSaveState("saving");
@@ -148,19 +147,10 @@ export function SiteSettings({ project }) {
         </label>
 
         <label>
-          <span>Origin</span>
+          <span>Site URL</span>
           <input
-            value={draft.origin}
-            onChange={(event) => updateDraft("origin", event.target.value)}
-            placeholder="https://sable.com"
-          />
-        </label>
-
-        <label>
-          <span>Edit URL</span>
-          <input
-            value={draft.editUrl}
-            onChange={(event) => updateDraft("editUrl", event.target.value)}
+            value={draft.siteUrl}
+            onChange={(event) => updateDraft("siteUrl", event.target.value)}
             placeholder="https://sable.com"
           />
         </label>

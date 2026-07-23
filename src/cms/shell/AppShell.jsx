@@ -6,12 +6,16 @@ import { humanizeSlug } from "../../humanize.js";
 import { useRoute } from "../lib/router.js";
 import styles from "./AppShell.module.css";
 
-function siteHost(origin, fallback) {
+function siteHost(siteUrl, fallback) {
   try {
-    return new URL(origin).host;
+    return new URL(siteUrl).host;
   } catch {
     return fallback;
   }
+}
+
+function projectUrl(project) {
+  return project?.siteUrl ?? project?.editUrl ?? project?.origin ?? "";
 }
 
 function NavToggle({ open, onToggle, label }) {
@@ -146,7 +150,7 @@ export function AppShell({ project, projects, section, isAdmin, email, children 
             </span>
             <span className={styles.switcherText}>
               <strong>{project ? project.name : "New site"}</strong>
-              {project && <small>{siteHost(project.origin, project.slug)}</small>}
+              {project && <small>{siteHost(projectUrl(project), project.slug)}</small>}
             </span>
             <svg className={styles.chevron} width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
               <path d="m7 15 5 5 5-5M7 9l5-5 5 5" />
@@ -164,7 +168,7 @@ export function AppShell({ project, projects, section, isAdmin, email, children 
                   href={`/cms/${item.slug}${section === "pages" ? "/pages" : section === "settings" && isAdmin ? "/settings" : ""}`}
                 >
                   <strong>{item.name}</strong>
-                  <small>{siteHost(item.origin, item.slug)}</small>
+                  <small>{siteHost(projectUrl(item), item.slug)}</small>
                 </a>
               ))}
               {isAdmin && (

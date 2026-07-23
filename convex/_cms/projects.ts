@@ -37,6 +37,7 @@ export const ensureSeedData = mutation({
       } else {
         await ctx.db.patch(project._id, {
           name: seed.name,
+          siteUrl: seed.siteUrl,
           origin: seed.origin,
           editUrl: seed.editUrl,
         });
@@ -146,18 +147,20 @@ export const createProject = mutation({
   args: {
     slug: v.string(),
     name: v.string(),
-    origin: v.string(),
-    editUrl: v.string(),
+    origin: v.optional(v.string()),
+    editUrl: v.optional(v.string()),
+    siteUrl: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     await requireAdmin(ctx);
 
     const slug = normalizeProjectSlug(args.slug);
     const name = args.name.trim();
-    const origin = args.origin.trim();
-    const editUrl = args.editUrl.trim();
+    const siteUrl = (args.siteUrl ?? args.editUrl ?? args.origin ?? "").trim();
+    const origin = (args.origin ?? siteUrl).trim();
+    const editUrl = (args.editUrl ?? siteUrl).trim();
 
-    if (!slug || !name || !origin || !editUrl) {
+    if (!slug || !name || !siteUrl || !origin || !editUrl) {
       throw new Error("Project fields are required.");
     }
 
@@ -169,6 +172,7 @@ export const createProject = mutation({
       name,
       origin,
       editUrl,
+      siteUrl,
     });
     const pageId = await ctx.db.insert("pages", {
       projectId,
@@ -192,8 +196,9 @@ export const updateProject = mutation({
   args: {
     slug: v.string(),
     name: v.string(),
-    origin: v.string(),
-    editUrl: v.string(),
+    origin: v.optional(v.string()),
+    editUrl: v.optional(v.string()),
+    siteUrl: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     await requireAdmin(ctx);
@@ -202,9 +207,10 @@ export const updateProject = mutation({
     if (!project) throw new Error("Project not found.");
 
     const name = args.name.trim();
-    const origin = args.origin.trim();
-    const editUrl = args.editUrl.trim();
-    if (!name || !origin || !editUrl) {
+    const siteUrl = (args.siteUrl ?? args.editUrl ?? args.origin ?? "").trim();
+    const origin = (args.origin ?? siteUrl).trim();
+    const editUrl = (args.editUrl ?? siteUrl).trim();
+    if (!name || !siteUrl || !origin || !editUrl) {
       throw new Error("Project fields are required.");
     }
 
@@ -212,6 +218,7 @@ export const updateProject = mutation({
       name,
       origin,
       editUrl,
+      siteUrl,
     });
 
     return await ctx.db.get(project._id);

@@ -203,6 +203,7 @@ function CmsEditor({ projectSlug }) {
     collectionDrafts,
     previewOrigin,
     siteUrl,
+    previewError,
   } = useCmsProject(projectSlug, selectedPageSlug, selectedLanguage);
 
   const {
@@ -625,7 +626,12 @@ function CmsEditor({ projectSlug }) {
         theme={theme}
       />
 
-      <PreviewFrame iframeRef={iframeRef} projectName={projectName} siteUrl={siteUrl} />
+      <PreviewFrame
+        iframeRef={iframeRef}
+        projectName={projectName}
+        siteUrl={siteUrl}
+        previewError={previewError}
+      />
 
       <BottomBar
         changeCount={changeCount}

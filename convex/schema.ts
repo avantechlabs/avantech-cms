@@ -8,8 +8,10 @@ export default defineSchema({
   projects: defineTable({
     slug: v.string(),
     name: v.string(),
-    origin: v.string(),
-    editUrl: v.string(),
+    // Migration window: old rows use origin/editUrl; new code also writes siteUrl.
+    origin: v.optional(v.string()),
+    editUrl: v.optional(v.string()),
+    siteUrl: v.optional(v.string()),
   }).index("by_slug", ["slug"]),
 
   siteMembers: defineTable({

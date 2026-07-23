@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "pnpm -r --parallel --stream --include-workspace-root --filter avantech-cms --filter site-demo --filter sable-demo run dev:stack",
+    "dev": "node scripts/devStack.js",
     "dev:stack": "vite --host 0.0.0.0 --port 51730 --strictPort",
     "dev:cms": "pnpm run dev:stack",
     "build": "vite build",
@@ -11,6 +11,8 @@
     "dev:project-a": "pnpm --filter site-demo dev",
     "dev:project-b": "pnpm --filter sable-demo dev",
     "dev:examples": "pnpm --parallel --filter site-demo --filter sable-demo dev",
+    "check:prod-env": "node scripts/checkProdEnv.js",
+    "prebuild": "pnpm run check:prod-env",
     "test": "vitest run"
   },
   "dependencies": {
