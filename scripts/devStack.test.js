@@ -44,8 +44,10 @@ describe("dev stack process config", () => {
     }
   });
 
-  test("project-local dev scripts use the same fixed ports", () => {
-    for (const process of devStackProcesses.filter((item) => item.name !== "cms")) {
+  test("repo-local example dev scripts use the same fixed ports", () => {
+    for (const process of devStackProcesses.filter((item) =>
+      ["site-demo", "sable"].includes(item.name),
+    )) {
       const packageJson = JSON.parse(readFileSync(`${process.cwd}/package.json`, "utf8"));
       expect(packageJson.scripts.dev).toContain(String(process.port));
     }
