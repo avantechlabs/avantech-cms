@@ -224,3 +224,80 @@ After that, normal **Sign in** should work for that production account.
   that deployment has auth env vars and current functions deployed.
 - Do not treat `InvalidAccountId` as a frontend bug. It means Convex Auth could
   not find a password account for the submitted email.
+
+## Follow-up: Public Sites Reading Dev CMS
+
+Date: 2026-07-23
+
+Production CMS edits did not appear on the public sites even after the CMS admin
+was writing to production Convex.
+
+### Root Cause
+
+The public site frontends read `VITE_CONVEX_URL` at Vite build time. Their
+production Vercel environment was stale or empty:
+
+- `cleaning` production had `VITE_CONVEX_URL` set to the dev Convex deployment,
+  `https://healthy-fox-966.convex.cloud`.
+- `servir-avec-compassion` production had an empty `VITE_CONVEX_URL`.
+
+The CMS production backend is:
+
+```text
+https://shocking-boar-256.convex.cloud
+```
+
+Changing Vercel env vars does not change already-built JavaScript bundles. The
+public sites also had to be rebuilt/redeployed after the env fix.
+
+### Fix Applied
+
+Updated the production `VITE_CONVEX_URL` env var to
+`https://shocking-boar-256.convex.cloud` for:
+
+- Vercel project `cleaning`
+- Vercel project `servir-avec-compassion`
+
+Redeployed the latest existing production deployments through Vercel CLI so the
+dirty local working trees in those site repos were not shipped.
+
+New production deployments:
+
+- `cleaning`: `https://cleaning-kgryzvsyx-shamiivans-projects.vercel.app`
+- `servir-avec-compassion`:
+  `https://servir-avec-compassion-lnk469upa-shamiivans-projects.vercel.app`
+
+### Verification
+
+Commands run:
+
+```bash
+vercel pull --yes --environment=production
+vercel inspect https://cleaning-kgryzvsyx-shamiivans-projects.vercel.app
+vercel inspect https://servir-avec-compassion-lnk469upa-shamiivans-projects.vercel.app
+```
+
+Results:
+
+- `pinkexterior.ca` live bundle includes `shocking-boar-256.convex.cloud`.
+- `pinkexterior.ca` live bundle does not include `healthy-fox-966.convex.cloud`.
+- `www.serviraveccompassion.ca` live bundle includes
+  `shocking-boar-256.convex.cloud`.
+- `www.serviraveccompassion.ca` live bundle does not include
+  `healthy-fox-966.convex.cloud`.
+
+### Related Findings
+
+Production CMS currently has project rows for `pink` and
+`servir-avec-compassion`. `endocafe` and `directive-films` have CMS runtime
+hooks in their site code, but production CMS does not currently have matching
+project rows for those slugs.
+
+### Patterns to Avoid
+
+- Do not assume a public site reads from the same Convex deployment as the CMS
+  admin. Each Vercel project has its own build-time environment.
+- Do not expect Vercel env changes to affect already-built frontend bundles.
+  Redeploy after changing `VITE_` env vars.
+- Do not deploy public sites from a dirty local checkout when the goal is only
+  to refresh production env. Redeploy an existing production deployment instead.
