@@ -141,3 +141,86 @@ The CLI could not call `cms:updateProject` directly because the mutation correct
 - Do not make the schema narrower before backfilling existing rows.
 - Do not treat browser extension `contentscript.js` warnings as app root cause when a first-party Convex error is present.
 - During field migrations, prefer widen, dual-read, dual-write, deploy, backfill, then narrow in a later change.
+
+## Follow-up: Production Auth Sign-In Server Error
+
+Date: 2026-07-23
+
+After deploying the CMS frontend to production, the browser console showed:
+
+```text
+[CONVEX A(auth:signIn)] Server Error
+```
+
+The console also showed `/favicon.ico` 404 and `inject.bundle.js` /
+`runtime.lastError` messages. Those were not the app failure. The real app
+failure was the Convex `auth:signIn` action.
+
+### Root Cause
+
+Production Vercel was correctly pointing at the production Convex URL:
+
+```text
+https://shocking-boar-256.convex.cloud
+```
+
+But the production Convex deployment was not fully initialized for CMS auth.
+
+Confirmed facts:
+
+- Production Convex logs showed `auth:signIn` throwing `InvalidAccountId`.
+- Production `authAccounts` and `users` tables were empty.
+- Production Convex had no auth env vars set.
+- Production Convex functions were stale before the fix; project mutations still
+  had the old `origin` / `editUrl` required contract.
+
+The immediate sign-in error meant the submitted password account did not exist
+in production. A dev CMS account does not carry over to the production Convex
+deployment.
+
+### Fix Applied
+
+- Set production Convex Auth env vars on `shocking-boar-256`:
+  - `CMS_ADMIN_EMAIL`
+  - `SITE_URL`
+  - `JWT_PRIVATE_KEY`
+  - `JWKS`
+- Used a fresh production JWT keypair.
+- Deployed current Convex functions to production with:
+
+```bash
+npx convex deploy --typecheck disable --message "Initialize production CMS auth and schema" --yes
+```
+
+### Verification
+
+Commands run:
+
+```bash
+npx convex logs --prod --history 20
+npx convex env --prod list
+npx convex data --prod authAccounts --limit 5 --format jsonArray
+npx convex data --prod users --limit 5 --format jsonArray
+npx convex function-spec --prod
+```
+
+Results:
+
+- Production env vars are now present.
+- Production functions deployed successfully.
+- Production function spec now includes the widened `siteUrl` project contract.
+- Production `authAccounts` and `users` are still empty until the first real
+  production account is created.
+
+### Required First-Use Step
+
+On production, use **Create account** once with the configured admin email.
+After that, normal **Sign in** should work for that production account.
+
+### Patterns to Avoid
+
+- Do not expect dev Convex auth users to exist in production Convex.
+- Do not ship a production frontend pointed at a new Convex deployment before
+  that deployment has auth env vars and current functions deployed.
+- Do not treat `InvalidAccountId` as a frontend bug. It means Convex Auth could
+  not find a password account for the submitted email.
