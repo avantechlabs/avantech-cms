@@ -52,12 +52,15 @@
     body.cms-edit [data-cms-field].cms-leaf {
       cursor: text;
       border-radius: 4px;
-      outline: 1.5px solid transparent;
+      /* persistent resting affordance: a quiet hairline that says "editable" without shouting */
+      outline: 1.5px solid color-mix(in srgb, var(--cms-line) 70%, transparent);
       outline-offset: 6px;
       transition: outline-color .14s ease, background-color .14s ease;
     }
     body.cms-edit img[data-cms-field].cms-leaf {
       cursor: pointer;
+      /* images get the same faint resting hint (cursor alone is not visible affordance) */
+      outline-color: color-mix(in srgb, var(--cms-line) 70%, transparent);
     }
     body.cms-edit [data-cms-field].cms-leaf.cms-draft {
       /* calm "you changed this": soft tint + soft solid accent, never an alarming dashed box */

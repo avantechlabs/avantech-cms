@@ -3,7 +3,6 @@ import { createRoot } from "react-dom/client";
 import { ConvexReactClient, useMutation, useQuery } from "convex/react";
 import {
   ConvexAuthProvider,
-  useAuthActions,
   useConvexAuth,
 } from "@convex-dev/auth/react";
 import { api } from "../convex/_generated/api.js";
@@ -248,7 +247,6 @@ function CmsEditor({ projectSlug }) {
     .join("|");
   const cmsAccess = useQuery(api.cms.getCmsAccess);
   const canSyncStructure = cmsAccess?.isAdmin === true;
-  const { signOut } = useAuthActions();
   const activeCollectionKey = selectedRecord?.collectionKey ?? selectedCollectionKey;
   const previewFieldsReadyForLanguage = pageLanguage === selectedLanguage;
   // Gate on cmsAccess so a ?collection= deep link doesn't fire this query
@@ -621,7 +619,6 @@ function CmsEditor({ projectSlug }) {
         mode={mode}
         onLanguageChange={setSelectedLanguage}
         onModeChange={setMode}
-        onSignOut={() => void signOut()}
         onThemeToggle={() => setTheme((t) => (t === "dark" ? "light" : "dark"))}
         theme={theme}
       />

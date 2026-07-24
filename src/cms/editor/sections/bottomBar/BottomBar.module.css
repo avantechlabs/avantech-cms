@@ -36,15 +36,9 @@
   border-radius: 50%;
   background: var(--gold);
   box-shadow: 0 0 0 4px var(--gold-ring);
-  animation: cms-pulse 2.4s var(--ease) infinite;
 }
 
 .unpublished { color: var(--draft-ink); font-weight: 500; }
-
-@keyframes cms-pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.6; }
-}
 
 .sep { width: 1px; height: 20px; background: var(--line); }
 

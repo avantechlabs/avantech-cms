@@ -5,7 +5,7 @@
   z-index: 60;
   display: flex;
   align-items: center;
-  gap: var(--s-2);
+  gap: var(--s-3);
   opacity: 1;
   transition: opacity var(--dur-base) var(--ease);
 }
@@ -14,34 +14,43 @@
 
 .dock:hover { opacity: 1; }
 
+/* Preferences — recessive secondary group (theme + language). */
+.prefs {
+  display: flex;
+  align-items: center;
+  gap: var(--s-1);
+}
+
 .iconBtn {
   display: grid;
   place-items: center;
-  width: 34px;
-  height: 34px;
+  width: 28px;
+  height: 28px;
   border: 1px solid var(--line);
   border-radius: var(--r-pill);
   background: var(--surface);
-  color: var(--text-2);
-  box-shadow: var(--shadow-lg);
+  color: var(--text-muted);
+  box-shadow: var(--shadow-md);
   cursor: pointer;
   transition: color var(--dur-fast) var(--ease), background var(--dur-fast) var(--ease);
 }
 
-.iconBtn:hover { color: var(--text); background: var(--surface-2); }
+.iconBtn:hover { color: var(--text-2); background: var(--surface-2); }
 
 .iconBtn:focus-visible,
-.modeToggle button:focus-visible {
+.modeToggle button:focus-visible,
+.langToggle button:focus-visible {
   outline: 2px solid var(--gold);
   outline-offset: 2px;
 }
 
+/* Anchor — the primary View/Edit control for the whole stage. */
 .modeToggle {
   display: flex;
   gap: 2px;
-  padding: 4px;
+  padding: var(--s-1);
   background: var(--surface);
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-strong);
   border-radius: var(--r-pill);
   box-shadow: var(--shadow-lg);
 }
@@ -52,12 +61,48 @@
   background: none;
   color: var(--text-muted);
   font-family: var(--font-meta);
-  font-size: 10px;
+  font-size: 11px;
   letter-spacing: 0.16em;
   text-transform: uppercase;
-  padding: 6px 12px;
+  padding: var(--s-2) var(--s-4);
   border-radius: var(--r-pill);
   transition: color var(--dur-fast) var(--ease), background var(--dur-fast) var(--ease);
 }
 
 .modeToggle button.on { background: var(--text); color: var(--surface); }
+
+/* Language — quieter secondary toggle inside the preferences group. */
+.langToggle {
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-pill);
+  box-shadow: var(--shadow-md);
+}
+
+.langToggle button {
+  border: 0;
+  cursor: pointer;
+  background: none;
+  color: var(--text-muted);
+  font-family: var(--font-meta);
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  padding: var(--s-1) var(--s-2);
+  border-radius: var(--r-pill);
+  transition: color var(--dur-fast) var(--ease), background var(--dur-fast) var(--ease);
+}
+
+.langToggle button.on { color: var(--text); }
+
+@media (prefers-reduced-motion: reduce) {
+  .dock,
+  .iconBtn,
+  .modeToggle button,
+  .langToggle button {
+    transition: none;
+  }
+}

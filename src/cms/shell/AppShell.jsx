@@ -43,6 +43,16 @@ function NavToggle({ open, onToggle, label }) {
   );
 }
 
+function SkeletonRows({ count = 3 }) {
+  return (
+    <div className={styles.subNav} aria-hidden="true">
+      {Array.from({ length: count }).map((_, i) => (
+        <span key={i} className={styles.skeleton} />
+      ))}
+    </div>
+  );
+}
+
 const NAV_ICONS = {
   editor: (
     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -118,14 +128,18 @@ export function AppShell({ project, projects, section, isAdmin, email, children 
   const slug = project?.slug;
   const [pagesOpen, setPagesOpen] = useState(true);
   const [collectionsOpen, setCollectionsOpen] = useState(true);
-  const pages = useQuery(
+  const pagesQuery = useQuery(
     api.cms.listPages,
     slug ? { projectSlug: slug } : "skip",
-  ) ?? [];
-  const collections = useQuery(
+  );
+  const collectionsQuery = useQuery(
     api.cms.listCollections,
     slug ? { projectSlug: slug } : "skip",
-  ) ?? [];
+  );
+  const pages = pagesQuery ?? [];
+  const collections = collectionsQuery ?? [];
+  const pagesLoading = Boolean(slug) && pagesQuery === undefined;
+  const collectionsLoading = Boolean(slug) && collectionsQuery === undefined;
 
   const { search } = useRoute();
   const params = new URLSearchParams(search);
@@ -209,7 +223,8 @@ export function AppShell({ project, projects, section, isAdmin, email, children 
               />
             )}
           </span>
-          {pagesOpen && pages.length > 0 && (
+          {pagesOpen && pagesLoading && <SkeletonRows count={3} />}
+          {pagesOpen && !pagesLoading && pages.length > 0 && (
             <div className={styles.subNav}>
               {pages.map((page) => (
                 <a
@@ -247,7 +262,8 @@ export function AppShell({ project, projects, section, isAdmin, email, children 
               />
             )}
           </span>
-          {collectionsOpen && collections.length > 0 && (
+          {collectionsOpen && collectionsLoading && <SkeletonRows count={3} />}
+          {collectionsOpen && !collectionsLoading && collections.length > 0 && (
             <div className={styles.subNav}>
               {collections.map((collection) => (
                 <a
@@ -263,16 +279,11 @@ export function AppShell({ project, projects, section, isAdmin, email, children 
               ))}
             </div>
           )}
-          {collectionsOpen && slug && collections.length === 0 && (
+          {collectionsOpen && !collectionsLoading && slug && collections.length === 0 && (
             <div className={styles.subNav}>
               <span className={styles.subEmpty}>No collections yet</span>
             </div>
           )}
-
-          <span className={`${styles.navItem} ${styles.disabled}`} title="Media — coming soon">
-            {NAV_ICONS.media}
-            <span>Media</span>
-          </span>
 
           {isAdmin && (
             <a
